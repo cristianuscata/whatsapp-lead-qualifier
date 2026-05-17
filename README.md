@@ -56,7 +56,7 @@ Evolution API (Docker) ──http://host.docker.internal:8000/webhook──▶ U
 
 ### 1. Environment Variables (`.env`)
 
-Copy the `.env.example` file and rename it to `.env`. Fill in the values:
+Create a `.env` file at the project root with the following values:
 
 | Variable | Description | Example |
 |---|---|---|
@@ -67,12 +67,15 @@ Copy the `.env.example` file and rename it to `.env`. Fill in the values:
 | `SUPABASE_URL` | Your Supabase project URL | `https://xxx.supabase.co` |
 | `SUPABASE_KEY` | Supabase anon key | `eyJ...` |
 | `VENDEDOR_NUMERO` | Salesperson's number (country code + number, without `+`) | `51958213628` |
+| `CRISTIAN_PHONE` | *(coach branch only)* JID of the personal phone that talks to the coach | `51XXXXXXXXX@s.whatsapp.net` |
+| `COACH_ENABLED` | *(coach branch only)* Enable the coach module and its scheduler | `true` |
 
 ### 2. Database (Supabase)
 
 Go to the **SQL Editor** panel in Supabase and run:
 
 ```sql
+-- Lead agent (always required)
 CREATE TABLE mensajes (
     id         bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     numero     text NOT NULL,
@@ -80,6 +83,32 @@ CREATE TABLE mensajes (
     rol        text NOT NULL CHECK (rol IN ('user', 'assistant')),
     contenido  text NOT NULL,
     creado_en  timestamptz DEFAULT now()
+);
+```
+
+If you are on the `private_coach` branch (personal coach feature), also run:
+
+```sql
+-- Personal coach: scheduled reminders
+CREATE TABLE recordatorios (
+    id               bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    tarea            text NOT NULL,
+    hora_recordar    time NOT NULL,
+    hora_seguimiento time NOT NULL,
+    fecha            date NOT NULL,
+    avisado          boolean DEFAULT false,
+    cumplido         boolean DEFAULT NULL,
+    reprogramado     boolean DEFAULT false,
+    created_at       timestamptz DEFAULT now()
+);
+
+-- Personal coach: conversation history (separate from leads)
+CREATE TABLE coach_mensajes (
+    id         bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    role       text NOT NULL CHECK (role IN ('user', 'assistant')),
+    content    text NOT NULL,
+    tipo       text DEFAULT 'chat',
+    created_at timestamptz DEFAULT now()
 );
 ```
 
@@ -352,7 +381,23 @@ Check `connectionStatus` (`open` = good) and `ownerJid` (must match the number y
 
 If `fetchInstances` returns `[]`, the volume `evolution_instances` was wiped (e.g. by `docker-compose down -v`) — recreate the instance from scratch.
 
-### 3. Is Evolution actually hitting the webhook?
+### 3. Are the inter-container URLs correct? (most common root cause)
+
+When everything runs in Docker, `agent` and `evolution` must talk to each other by **service name + internal port**, not via `localhost` or `host.docker.internal`. Inside a container, `localhost` means the container itself, not the host.
+
+| Caller | Target | Correct URL |
+|---|---|---|
+| `evolution` container | `agent` | `http://agent:8000/webhook` (in `docker-compose.yml` → `WEBHOOK_GLOBAL_URL`) |
+| `agent` container | `evolution` | `http://evolution:8080` (in `.env` → `EVOLUTION_URL`) |
+| Your terminal / PowerShell | Either | `http://localhost:8000` or `http://localhost:8081` (the port-forwards) |
+
+Symptoms of mis-configuration:
+- `evolution` logs show `AxiosError: timeout of 60000ms exceeded` → its `WEBHOOK_GLOBAL_URL` is wrong.
+- `agent` logs show `Error de conexión enviando a ...: All connection attempts failed` → its `EVOLUTION_URL` is wrong.
+
+If you switch back to **dev mode** (`uvicorn` local + only Evolution in Docker), invert both: `EVOLUTION_URL=http://localhost:8081` and `WEBHOOK_GLOBAL_URL=http://host.docker.internal:8000/webhook`.
+
+### 4. Is Evolution actually hitting the webhook?
 
 Tail the agent's logs and send a WhatsApp test message:
 
@@ -367,7 +412,7 @@ You should see log lines like `Mensaje de <name> (<number>): ...`. If nothing sh
 - WEBHOOK_GLOBAL_ENABLED=true
 ```
 
-### 4. Did the Supabase credentials change?
+### 5. Did the Supabase credentials change?
 
 If `.env` was updated (new `SUPABASE_URL` / `SUPABASE_KEY` / `OPENAI_API_KEY`) but the agent was already running, it's still using the old values. Force a reload:
 
@@ -377,7 +422,7 @@ docker-compose up -d --force-recreate agent
 
 Then re-test. If you see errors in the agent logs about Supabase, double-check the URL/key and that the `mensajes` table exists (see "Database (Supabase)" in initial setup).
 
-### 5. Frozen WhatsApp session
+### 6. Frozen WhatsApp session
 
 If the bot was working and suddenly stopped (no logs on webhook even though it was working before), WhatsApp may have closed the session. Recreate the instance:
 

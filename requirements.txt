@@ -4,3 +4,5 @@ openai
 supabase
 httpx
 python-dotenv
+apscheduler
+tzdata
