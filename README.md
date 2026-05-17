@@ -1,76 +1,76 @@
 # WhatsApp AI Sales Agent 🚀
 
-Agente de atención al cliente de WhatsApp automatizado construido con **FastAPI**, **OpenAI (GPT-4o-mini)** para inteligencia conversacional, **Supabase** para memoria a largo plazo y **Evolution API v2** como puente a WhatsApp.
+Automated WhatsApp customer service agent built with **FastAPI**, **OpenAI (GPT-4o-mini)** for conversational intelligence, **Supabase** for long-term memory, and **Evolution API v2** as the WhatsApp bridge.
 
-El bot clasifica automáticamente a los leads en tres niveles (Frío 🧊, Tibio 🌤️, Caliente 🔥) y alerta al vendedor humano por WhatsApp cuando un cliente está listo para comprar.
+The bot automatically classifies leads into three tiers (Cold 🧊, Warm 🌤️, Hot 🔥) and alerts the human salesperson via WhatsApp when a customer is ready to buy.
 
 ---
 
-## 📐 Arquitectura
+## 📐 Architecture
 
 ```
 ┌─────────────┐     ┌──────────────────────────────┐     ┌──────────────┐
-│  Cliente     │     │        Docker                 │     │  Tu PC       │
-│  WhatsApp    │────▶│  Evolution API v2 (:8081)     │────▶│  Uvicorn     │
-│              │◀────│  (puente WhatsApp)            │◀────│  FastAPI     │
-│              │     │         │                     │     │  (:8000)     │
-│              │     │  PostgreSQL (datos internos)  │     │              │
+│  WhatsApp   │     │        Docker                 │     │  Your PC     │
+│  Client     │────▶│  Evolution API v2 (:8081)     │────▶│  Uvicorn     │
+│             │◀────│  (WhatsApp bridge)            │◀────│  FastAPI     │
+│             │     │         │                     │     │  (:8000)     │
+│             │     │  PostgreSQL (internal data)   │     │              │
 └─────────────┘     └──────────────────────────────┘     └──────┬───────┘
                                                                 │
                                                     ┌───────────┼───────────┐
                                                     │           │           │
                                                ┌────▼───┐ ┌────▼───┐ ┌────▼────┐
-                                               │ OpenAI │ │Supabase│ │Clasifi- │
-                                               │ GPT-4o │ │  (DB)  │ │ cador   │
+                                               │ OpenAI │ │Supabase│ │Lead     │
+                                               │ GPT-4o │ │  (DB)  │ │Classif. │
                                                └────────┘ └────────┘ └─────────┘
 ```
 
-### ¿Por qué NO se necesita Ngrok? 🤔
+### Why Ngrok is NOT needed 🤔
 
-En la versión original, se planteó usar **Ngrok** como túnel público para que Evolution API pudiera enviar webhooks a tu FastAPI. Pero resulta que **no es necesario en desarrollo local** porque:
+In the original design, **Ngrok** was considered as a public tunnel so Evolution API could send webhooks to your FastAPI. However, **it's not necessary for local development** because:
 
-1. **Evolution API corre dentro de Docker** en tu máquina.
-2. **Uvicorn (FastAPI) corre directamente en tu máquina** (fuera de Docker).
-3. Docker tiene un hostname especial llamado `host.docker.internal` que resuelve directamente a tu PC desde dentro de cualquier contenedor.
+1. **Evolution API runs inside Docker** on your machine.
+2. **Uvicorn (FastAPI) runs directly on your machine** (outside Docker).
+3. Docker has a special hostname called `host.docker.internal` that resolves directly to your PC from inside any container.
 
-Entonces el flujo es **completamente local**:
+So the flow is **completely local**:
 
 ```
-Evolution API (Docker) ──http://host.docker.internal:8000/webhook──▶ Uvicorn (tu PC)
+Evolution API (Docker) ──http://host.docker.internal:8000/webhook──▶ Uvicorn (your PC)
 ```
 
-> **Ngrok solo sería necesario si Evolution API estuviera en un servidor remoto** y tu FastAPI en otro lado. En desarrollo local, `host.docker.internal` resuelve todo.
+> **Ngrok would only be needed if Evolution API were on a remote server** and your FastAPI somewhere else. In local development, `host.docker.internal` solves everything.
 
 ---
 
-## 🛠️ Requisitos Previos
+## 🛠️ Prerequisites
 
 - [Python 3.11+](https://www.python.org/)
-- [Docker y Docker Compose](https://www.docker.com/)
-- Cuenta en [Supabase](https://supabase.com/) (Base de datos)
-- API Key de [OpenAI](https://platform.openai.com/) (GPT-4o-mini)
+- [Docker and Docker Compose](https://www.docker.com/)
+- [Supabase](https://supabase.com/) account (Database)
+- [OpenAI](https://platform.openai.com/) API Key (GPT-4o-mini)
 
 ---
 
-## ⚙️ Configuración Inicial (solo la primera vez)
+## ⚙️ Initial Setup (first time only)
 
-### 1. Variables de Entorno (`.env`)
+### 1. Environment Variables (`.env`)
 
-Copia el archivo `.env.example` y renómbralo a `.env`. Rellena los valores:
+Copy the `.env.example` file and rename it to `.env`. Fill in the values:
 
-| Variable | Descripción | Ejemplo |
+| Variable | Description | Example |
 |---|---|---|
-| `OPENAI_API_KEY` | Tu clave de OpenAI | `sk-proj-...` |
-| `EVOLUTION_URL` | URL local de Evolution API | `http://localhost:8081` |
-| `EVOLUTION_API_KEY` | Contraseña para proteger la API | `crisagent2024` |
-| `EVOLUTION_INSTANCE` | Nombre de tu instancia del bot | `mi-instancia` |
-| `SUPABASE_URL` | URL de tu proyecto Supabase | `https://xxx.supabase.co` |
-| `SUPABASE_KEY` | Clave anon de Supabase | `eyJ...` |
-| `VENDEDOR_NUMERO` | Número del vendedor (código de país + número, sin `+`) | `51958213628` |
+| `OPENAI_API_KEY` | Your OpenAI key | `sk-proj-...` |
+| `EVOLUTION_URL` | Local Evolution API URL | `http://localhost:8081` |
+| `EVOLUTION_API_KEY` | Password to protect the API | `crisagent2024` |
+| `EVOLUTION_INSTANCE` | Your bot instance name | `mi-instancia` |
+| `SUPABASE_URL` | Your Supabase project URL | `https://xxx.supabase.co` |
+| `SUPABASE_KEY` | Supabase anon key | `eyJ...` |
+| `VENDEDOR_NUMERO` | Salesperson's number (country code + number, without `+`) | `51958213628` |
 
-### 2. Base de Datos (Supabase)
+### 2. Database (Supabase)
 
-Ve al panel de **SQL Editor** en Supabase y ejecuta:
+Go to the **SQL Editor** panel in Supabase and run:
 
 ```sql
 CREATE TABLE mensajes (
@@ -83,54 +83,99 @@ CREATE TABLE mensajes (
 );
 ```
 
-### 3. Dependencias Python
+### 3. Python Dependencies
 
+#### Option A: Standard `pip`
 ```bash
-# Opcional: crea y activa un entorno virtual
+# Create and activate a virtual environment
 python -m venv venv
 venv\Scripts\activate
 
-# Instala dependencias
+# Install dependencies
 pip install -r requirements.txt
 ```
 
----
-
-## 🚀 Guía de Arranque (Día a Día)
-
-Para levantar el proyecto necesitas **2 terminales abiertas simultáneamente**, siguiendo este orden:
-
-### 💻 Terminal 1 — Uvicorn (FastAPI)
-
-Arranca primero el cerebro lógico del bot:
-
+#### Option B: Fast setup with `uv` 🚀
 ```bash
-uvicorn main:app --reload
+# Create environment
+uv venv
+
+# Install dependencies
+uv pip install -r requirements.txt
 ```
 
-✅ Debe aparecer: `Uvicorn running on http://127.0.0.1:8000`
-
 ---
 
-### 🐳 Terminal 2 — Docker Compose (Evolution API + PostgreSQL)
+## 🚀 Startup Guide (Day to Day)
 
-Levanta el gateway de WhatsApp:
+You have two ways to run the project: **fully dockerized** (recommended, all 3 services inside Docker) or **dev mode with hot reload** (Uvicorn locally + Evolution in Docker).
 
+### 🐳 Option 1 — Fully Dockerized (recommended)
+
+Brings up the three services (`agent` FastAPI, `evolution`, `evolution-postgres`) in one shot:
+
+```bash
+docker-compose up -d
+```
+
+Verify all three are running:
+
+```bash
+docker-compose ps
+```
+
+You should see something like:
+
+```
+NAME                                           STATUS
+whatsapp-lead-qualifier-agent-1                Up
+whatsapp-lead-qualifier-evolution-1            Up
+whatsapp-lead-qualifier-evolution-postgres-1   Up
+```
+
+> ⚠️ **Common mistake:** running `docker-compose up evolution` (without `-d` and without naming the rest of the services) only starts Evolution, and the `agent` container stays down. Evolution will then receive WhatsApp messages but have no one to forward the webhook to → the bot won't reply. Always use `docker-compose up -d` (no service name) to bring up everything.
+
+Health check on the agent:
+
+```bash
+curl http://localhost:8000/health
+# → {"status":"ok"}
+```
+
+### 💻 Option 2 — Dev mode (Uvicorn local + Evolution in Docker)
+
+Useful when you're iterating on Python code and want hot reload. Needs **2 terminals**.
+
+**Terminal 1 — Uvicorn (FastAPI):**
+```bash
+uvicorn main:app --reload
+# Or with uv:
+uv run uvicorn main:app --reload
+```
+✅ You should see: `Uvicorn running on http://127.0.0.1:8000`
+
+**Terminal 2 — Docker Compose (Evolution only):**
 ```bash
 docker-compose up evolution
 ```
+✅ You should see: `HTTP - ON: 8080`
 
-✅ Debe aparecer: `HTTP - ON: 8080`
-
-> **Nota:** La primera vez tardará más porque descarga las imágenes de Docker (~1GB).
+> The first time it'll take longer because it downloads Docker images (~1GB).
 
 ---
 
-### 📱 Conectar WhatsApp (solo la primera vez o si la sesión expira)
+### 📱 Connect WhatsApp (first time only or when the session expires)
 
-Con ambas terminales corriendo, abre una **tercera terminal** (o una pestaña nueva de PowerShell) y ejecuta:
+> 🚨 **CRITICAL — Which WhatsApp account to use:**
+> The QR you're about to scan **vincula la cuenta de WhatsApp con la que escaneás como el bot**. Whoever scans is the bot.
+>
+> If your bot should respond from `+51 958 213 628`, you MUST scan the QR **from the WhatsApp app installed on the phone with that number** (Settings → Linked Devices → Link a Device).
+>
+> Scanning from the wrong WhatsApp account is the #1 reason "the bot doesn't reply" — Evolution stays connected just fine, but to a different number than the one you're sending test messages to. To verify which number got linked, see "Verify connection" below.
 
-#### A. Crear la instancia y obtener el QR
+With the services running, open a **new PowerShell tab** and run:
+
+#### A. Create the instance and get the QR code
 
 ```powershell
 $body = @{
@@ -146,81 +191,100 @@ Invoke-RestMethod -Uri "http://localhost:8081/instance/create" `
     -ContentType "application/json"
 ```
 
-En la respuesta verás un campo `base64` con el QR codificado. Cópialo y pégalo en [Base64 to Image](https://base64.guru/converter/decode/image) para escanearlo con tu celular.
-
-> 💡 **Tip:** También puedes obtener el QR desde el navegador visitando:
-> `http://localhost:8081/instance/connect/mi-instancia`
-
-#### B. Verificar que la conexión está activa
+The response includes a `qrcode.base64` field with the encoded PNG. To open it as an image:
 
 ```powershell
-Invoke-RestMethod -Uri "http://localhost:8081/instance/connectionState/mi-instancia" `
-    -Method Get `
-    -Headers @{ "apikey" = "crisagent2024" }
+$resp = Invoke-RestMethod -Uri "http://localhost:8081/instance/connect/mi-instancia" `
+    -Method Get -Headers @{ "apikey" = "crisagent2024" }
+$b64 = $resp.base64 -replace '^data:image/png;base64,', ''
+[IO.File]::WriteAllBytes("qr.png", [Convert]::FromBase64String($b64))
+Start-Process qr.png
 ```
 
-✅ Debe decir `state=open`.
+Then scan `qr.png` **from the WhatsApp account you want to be the bot** (see warning above).
+
+> 💡 You can also paste the base64 string into [Base64 to Image](https://base64.guru/converter/decode/image) to view it, or visit `http://localhost:8081/instance/connect/mi-instancia` in the browser (returns JSON with the base64).
+
+#### B. Verify the connection AND which number got linked
+
+```powershell
+Invoke-RestMethod -Uri "http://localhost:8081/instance/fetchInstances" `
+    -Method Get -Headers @{ "apikey" = "crisagent2024" }
+```
+
+Look for two fields in the response:
+
+- `connectionStatus` should be `open` — confirms WhatsApp is paired.
+- `ownerJid` should be `<your-bot-number>@s.whatsapp.net` (e.g. `51958213628@s.whatsapp.net`) — confirms the **right** account was linked.
+
+If `ownerJid` is a different number than the one you want, you scanned from the wrong phone. Delete the instance, recreate it, and scan from the correct account:
+
+```powershell
+Invoke-RestMethod -Uri "http://localhost:8081/instance/delete/mi-instancia" `
+    -Method Delete -Headers @{ "apikey" = "crisagent2024" }
+# Then redo step A.
+```
 
 ---
 
-## 🔧 Comandos Útiles
+## 🔧 Useful Commands
 
-### Logs y Monitoreo
+### Logs and Monitoring
 
 ```bash
-# Ver logs de Evolution API en tiempo real
+# View Evolution API logs in real time
 docker-compose logs -f evolution
 
-# Ver últimas 50 líneas de logs de Evolution
+# View last 50 lines of Evolution logs
 docker-compose logs --tail=50 evolution
 
-# Ver logs de PostgreSQL
+# View PostgreSQL logs
 docker-compose logs -f evolution-postgres
 
-# Ver logs de TODOS los servicios
+# View ALL services logs
 docker-compose logs -f
 ```
 
-### Control de Docker
+### Docker Control
 
 ```bash
-# Bajar todos los servicios (conserva datos)
+# Stop all services (preserves data)
 docker-compose down
 
-# Bajar todo Y borrar datos (volúmenes) — requiere re-escanear QR
+# Stop everything AND delete data (volumes) — requires re-scanning QR
 docker-compose down -v
 
-# Levantar todo en segundo plano (modo detached)
+# Start in background (detached mode)
 docker-compose up -d evolution
 
-# Ver estado de los contenedores
+# View container status
 docker-compose ps
 
-# Reiniciar solo Evolution API
+# Restart only Evolution API
 docker-compose restart evolution
 ```
 
-### Gestión de WhatsApp (PowerShell)
+### WhatsApp Management (PowerShell)
 
 ```powershell
-# Ver todas las instancias
+# List all instances
 Invoke-RestMethod -Uri "http://localhost:8081/instance/fetchInstances" `
     -Method Get -Headers @{ "apikey" = "crisagent2024" }
 
-# Ver estado de conexión
+# Check connection state
 Invoke-RestMethod -Uri "http://localhost:8081/instance/connectionState/mi-instancia" `
     -Method Get -Headers @{ "apikey" = "crisagent2024" }
 
-# Eliminar instancia (para reconectar desde cero)
+# Delete instance (to reconnect from scratch)
 Invoke-RestMethod -Uri "http://localhost:8081/instance/delete/mi-instancia" `
     -Method Delete -Headers @{ "apikey" = "crisagent2024" }
 
-# Desconectar WhatsApp sin eliminar la instancia
+# Disconnect WhatsApp without deleting the instance
 Invoke-RestMethod -Uri "http://localhost:8081/instance/logout/mi-instancia" `
     -Method Delete -Headers @{ "apikey" = "crisagent2024" }
 ```
 
-### Probar el webhook manualmente (sin WhatsApp)
+### Test the webhook manually (without WhatsApp)
 
 ```powershell
 $body = @{
@@ -230,9 +294,9 @@ $body = @{
             remoteJid = "5491100000000@s.whatsapp.net"
             fromMe = $false
         }
-        pushName = "Cliente Test"
+        pushName = "Test Client"
         message = @{
-            conversation = "Hola, quiero saber el precio"
+            conversation = "Hi, I'd like to know the price"
         }
     }
 } | ConvertTo-Json -Depth 5
@@ -245,80 +309,143 @@ Invoke-RestMethod -Uri "http://localhost:8000/webhook" `
 
 ---
 
-## 💡 Notas de Uso y Mantenimiento
+## 💡 Usage and Maintenance Notes
 
-- **"Loop Infinito":** El bot **nunca** responde a sus propios mensajes (`fromMe: true` se ignora). Para probar, siempre envía desde **otro celular** al número que escaneó el QR.
+- **"Infinite Loop":** The bot **never** responds to its own messages (`fromMe: true` is ignored). To test, always send from **another phone** to the number that scanned the QR.
 
-- **Sesión de WhatsApp Congelada:** Si el bot deja de contestar, probablemente la sesión se cerró. Elimina la instancia y vuelve a crearla:
-  ```powershell
-  # Eliminar
-  Invoke-RestMethod -Uri "http://localhost:8081/instance/delete/mi-instancia" `
-      -Method Delete -Headers @{ "apikey" = "crisagent2024" }
-  # Volver a crear (ver paso A arriba)
-  ```
+- **Reconnecting after restarting Docker:** If you only run `docker-compose down` (without `-v`), the WhatsApp session is kept in the `evolution_instances` volume. When you bring it back up, it should reconnect automatically.
 
-- **Reconectar tras reiniciar Docker:** Si solo haces `docker-compose down` (sin `-v`), la sesión de WhatsApp se mantiene guardada en el volumen `evolution_instances`. Al volver a subir, debería reconectarse automáticamente.
+- **⚠️ Never use `docker-compose down -v`** unless you intend to wipe the WhatsApp session. The `-v` flag deletes volumes, including `evolution_instances`, which forces you to re-scan the QR from scratch.
 
-- **Cambios en el código Python:** Uvicorn corre con `--reload`, así que cualquier cambio en `main.py`, `agent/`, o `db/` se aplica automáticamente sin reiniciar nada.
+- **Python code changes:**
+  - In **Option 2 (Uvicorn local)**: code reloads automatically thanks to `--reload`.
+  - In **Option 1 (fully dockerized)**: rebuild the `agent` container with `docker-compose up -d --build agent`.
+
+- **`.env` changes:** the `agent` container only reads `.env` at startup. After editing `.env`, run `docker-compose up -d --force-recreate agent` to pick up the new values.
 
 ---
 
-## 🏗️ Estructura del Proyecto
+## 🩺 Troubleshooting — "The bot doesn't reply"
 
-```
-whatsapp-agent/
-├── main.py                  # FastAPI — webhook + envío de mensajes
-├── agent/
-│   ├── openai_agent.py      # Generación de respuestas con GPT-4o-mini
-│   ├── classifier.py        # Clasificación de leads (frío/tibio/caliente)
-│   └── notifier.py          # Notificaciones inteligentes al vendedor
-├── db/
-│   └── supabase.py          # Guardar/obtener historial de mensajes
-├── docker-compose.yml       # Evolution API v2 + PostgreSQL
-├── Dockerfile               # Para producción (contenerizar el agente)
-├── requirements.txt         # Dependencias Python
-├── .env                     # Variables de entorno (NO subir a git)
-└── README.md                # Este archivo
+Work through these checks in order. Most "bot is dead" cases are one of these four.
+
+### 1. Are all three containers running?
+
+```bash
+docker-compose ps
 ```
 
----
-
-## 🔔 Sistema de Notificaciones al Vendedor
-
-El bot clasifica cada mensaje y notifica al vendedor de forma inteligente para que pueda priorizar su tiempo:
-
-| Temperatura | Notificación | Qué recibe el vendedor |
-|---|---|---|
-| 🔥 **Caliente** | ✅ Alerta urgente | `🔥🔥🔥 LEAD CALIENTE` + nombre + número + mensaje. Debe actuar inmediatamente. |
-| 🌤️ **Tibio** | ✅ Info resumida | `🌤️ Lead tibio detectado` + contexto. El bot ya respondió, puede intervenir si quiere. |
-| 🧊 **Frío** | ❌ Silencioso | Sin notificación. Solo se guarda en Supabase para análisis posterior. |
-
-**¿Por qué este enfoque?** Si el vendedor recibiera una alerta por CADA mensaje, se saturaría y dejaría de prestarles atención. Con este sistema, cuando suena una notificación 🔥, el vendedor sabe que **debe dejar todo y atender**.
-
----
-
-## 🌍 Guía para Producción
-
-Llevar este proyecto a un servidor real requiere los siguientes cambios:
-
-### 1. Contenerizar TODO con Docker Compose
-
-En producción, **ya no corres Uvicorn por separado**:
+You need `agent`, `evolution`, AND `evolution-postgres` all in `Up` state. If `agent` is missing, you probably ran `docker-compose up evolution` instead of `docker-compose up -d`. Fix:
 
 ```bash
 docker-compose up -d
 ```
 
-Esto levanta los 3 servicios: `agent` (FastAPI), `evolution` (WhatsApp), y `evolution-postgres` (DB).
+### 2. Is the WhatsApp instance linked to the RIGHT number?
 
-### 2. Cambiar `WEBHOOK_GLOBAL_URL` para comunicación interna
+```powershell
+Invoke-RestMethod -Uri "http://localhost:8081/instance/fetchInstances" `
+    -Method Get -Headers @{ "apikey" = "crisagent2024" }
+```
+
+Check `connectionStatus` (`open` = good) and `ownerJid` (must match the number you're sending test messages to). If `ownerJid` shows a different number, the QR was scanned from the wrong WhatsApp account → delete the instance and re-scan from the correct phone (see "Connect WhatsApp" section above).
+
+If `fetchInstances` returns `[]`, the volume `evolution_instances` was wiped (e.g. by `docker-compose down -v`) — recreate the instance from scratch.
+
+### 3. Is Evolution actually hitting the webhook?
+
+Tail the agent's logs and send a WhatsApp test message:
+
+```bash
+docker logs whatsapp-lead-qualifier-agent-1 --tail 50 -f
+```
+
+You should see log lines like `Mensaje de <name> (<number>): ...`. If nothing shows up when you send a message, Evolution isn't reaching the agent. Common cause: the global webhook isn't configured. Verify in `docker-compose.yml`:
 
 ```yaml
-# docker-compose.yml (producción)
+- WEBHOOK_GLOBAL_URL=http://host.docker.internal:8000/webhook
+- WEBHOOK_GLOBAL_ENABLED=true
+```
+
+### 4. Did the Supabase credentials change?
+
+If `.env` was updated (new `SUPABASE_URL` / `SUPABASE_KEY` / `OPENAI_API_KEY`) but the agent was already running, it's still using the old values. Force a reload:
+
+```bash
+docker-compose up -d --force-recreate agent
+```
+
+Then re-test. If you see errors in the agent logs about Supabase, double-check the URL/key and that the `mensajes` table exists (see "Database (Supabase)" in initial setup).
+
+### 5. Frozen WhatsApp session
+
+If the bot was working and suddenly stopped (no logs on webhook even though it was working before), WhatsApp may have closed the session. Recreate the instance:
+
+```powershell
+# Delete
+Invoke-RestMethod -Uri "http://localhost:8081/instance/delete/mi-instancia" `
+    -Method Delete -Headers @{ "apikey" = "crisagent2024" }
+# Recreate (see "Connect WhatsApp" section above)
+```
+
+---
+
+## 🏗️ Project Structure
+
+```
+whatsapp-agent/
+├── main.py                  # FastAPI — webhook + message sending
+├── agent/
+│   ├── openai_agent.py      # Response generation with GPT-4o-mini
+│   ├── classifier.py        # Lead classification (cold/warm/hot)
+│   └── notifier.py          # Smart salesperson notifications
+├── db/
+│   └── supabase.py          # Save/retrieve message history
+├── docker-compose.yml       # Evolution API v2 + PostgreSQL
+├── Dockerfile               # For production (containerize the agent)
+├── requirements.txt         # Python dependencies
+├── .env                     # Environment variables (DO NOT commit to git)
+└── README.md                # This file
+```
+
+---
+
+## 🔔 Salesperson Notification System
+
+The bot classifies each message and notifies the salesperson intelligently so they can prioritize their time:
+
+| Temperature | Notification | What the salesperson receives |
+|---|---|---|
+| 🔥 **Hot** | ✅ Urgent alert | `🔥🔥🔥 HOT LEAD` + name + number + message. Must act immediately. |
+| 🌤️ **Warm** | ✅ Summary info | `🌤️ Warm lead detected` + context. The bot already responded, they can step in if they want. |
+| 🧊 **Cold** | ❌ Silent | No notification. Only saved to Supabase for later analysis. |
+
+**Why this approach?** If the salesperson received an alert for EVERY message, they'd be overwhelmed and stop paying attention. With this system, when a 🔥 notification comes in, the salesperson knows they **must drop everything and respond**.
+
+---
+
+## 🌍 Production Guide
+
+Taking this project to a real server requires the following changes:
+
+### 1. Containerize EVERYTHING with Docker Compose
+
+In production, **you no longer run Uvicorn separately**:
+
+```bash
+docker-compose up -d
+```
+
+This starts all 3 services: `agent` (FastAPI), `evolution` (WhatsApp), and `evolution-postgres` (DB).
+
+### 2. Change `WEBHOOK_GLOBAL_URL` for internal communication
+
+```yaml
+# docker-compose.yml (production)
 - WEBHOOK_GLOBAL_URL=http://agent:8000/webhook
 ```
 
-### 3. Configurar dominio con HTTPS (Caddy)
+### 3. Configure domain with HTTPS (Caddy)
 
 ```yaml
   caddy:
@@ -333,12 +460,12 @@ Esto levanta los 3 servicios: `agent` (FastAPI), `evolution` (WhatsApp), y `evol
 
 ```
 # Caddyfile
-api.tuempresa.com {
+api.yourcompany.com {
     reverse_proxy agent:8000
 }
 ```
 
-### 4. Habilitar Redis
+### 4. Enable Redis
 
 ```yaml
   redis:
@@ -352,113 +479,113 @@ api.tuempresa.com {
       - CACHE_REDIS_URI=redis://redis:6379/0
 ```
 
-### 5. Desarrollo vs Producción
+### 5. Development vs Production
 
-| Aspecto | Desarrollo (local) | Producción (servidor) |
+| Aspect | Development (local) | Production (server) |
 |---|---|---|
-| **Uvicorn** | Terminal local con `--reload` | Dentro de Docker (`agent`) |
-| **Webhook URL** | `http://host.docker.internal:8000` | `http://agent:8000` (interna) |
-| **Acceso externo** | `localhost:8081` | `api.tuempresa.com` (HTTPS) |
-| **Ngrok** | ❌ No necesario | ❌ No necesario |
-| **Redis** | Deshabilitado | Habilitado |
-| **Arranque** | `uvicorn` + `docker-compose up evolution` | `docker-compose up -d` |
+| **Uvicorn** | Local terminal with `--reload` | Inside Docker (`agent`) |
+| **Webhook URL** | `http://host.docker.internal:8000` | `http://agent:8000` (internal) |
+| **External access** | `localhost:8081` | `api.yourcompany.com` (HTTPS) |
+| **Ngrok** | ❌ Not needed | ❌ Not needed |
+| **Redis** | Disabled | Enabled |
+| **Startup** | `uvicorn` + `docker-compose up evolution` | `docker-compose up -d` |
 
 ---
 
-## 💰 Plataformas y Suscripciones para Producción
+## 💰 Platforms and Subscriptions for Production
 
-### Opción A: Mínimo Viable (~$12-20/mes)
+### Option A: Minimum Viable (~$12-20/month)
 
-| Servicio | Plataforma | Costo | Para qué |
+| Service | Platform | Cost | Purpose |
 |---|---|---|---|
-| **Servidor VPS** | [Hetzner Cloud](https://www.hetzner.com/cloud) CX22 | ~$4-6/mes | Docker con todos los servicios |
-| **OpenAI API** | [OpenAI](https://platform.openai.com/) GPT-4o-mini | ~$2-5/mes | Genera respuestas (~1M tokens = ~$0.30) |
-| **Supabase** | [Supabase](https://supabase.com/) Free tier | $0/mes | 500MB base de datos gratis |
-| **Dominio** | [Namecheap](https://namecheap.com/) o [Cloudflare](https://cloudflare.com/) | ~$10/año | `tuempresa.com` |
-| **SSL** | Caddy (automático) | $0 | HTTPS gratis con Let's Encrypt |
+| **VPS Server** | [Hetzner Cloud](https://www.hetzner.com/cloud) CX22 | ~$4-6/month | Docker with all services |
+| **OpenAI API** | [OpenAI](https://platform.openai.com/) GPT-4o-mini | ~$2-5/month | Generates responses (~1M tokens = ~$0.30) |
+| **Supabase** | [Supabase](https://supabase.com/) Free tier | $0/month | 500MB free database |
+| **Domain** | [Namecheap](https://namecheap.com/) or [Cloudflare](https://cloudflare.com/) | ~$10/year | `yourcompany.com` |
+| **SSL** | Caddy (automatic) | $0 | Free HTTPS with Let's Encrypt |
 
-**Total: ~$12-20/mes** para arrancar con hasta ~50 clientes concurrentes.
+**Total: ~$12-20/month** to get started with up to ~50 concurrent customers.
 
-### Opción B: Escalable (~$30-60/mes)
+### Option B: Scalable (~$30-60/month)
 
-| Servicio | Plataforma | Costo | Ventaja |
+| Service | Platform | Cost | Advantage |
 |---|---|---|---|
-| **Servidor** | [DigitalOcean](https://digitalocean.com/) Droplet 4GB | ~$24/mes | Más RAM para múltiples instancias |
-| **OpenAI** | GPT-4o-mini alto volumen | ~$5-15/mes | Más conversaciones |
-| **Supabase** | Pro Plan | $25/mes | 8GB, backups diarios |
-| **Monitoreo** | [UptimeRobot](https://uptimerobot.com/) | $0 | Alerta si el servidor se cae |
+| **Server** | [DigitalOcean](https://digitalocean.com/) 4GB Droplet | ~$24/month | More RAM for multiple instances |
+| **OpenAI** | GPT-4o-mini high volume | ~$5-15/month | More conversations |
+| **Supabase** | Pro Plan | $25/month | 8GB, daily backups |
+| **Monitoring** | [UptimeRobot](https://uptimerobot.com/) | $0 | Alerts if server goes down |
 
-### Opción C: Cloud Gestionado (~$40-80/mes)
+### Option C: Managed Cloud (~$40-80/month)
 
-| Servicio | Plataforma | Costo | Ventaja |
+| Service | Platform | Cost | Advantage |
 |---|---|---|---|
-| **FastAPI** | [Railway](https://railway.app/) o [Render](https://render.com/) | ~$7-20/mes | Deploy con Git push |
-| **Evolution API** | VPS dedicado (Hetzner/DO) | ~$6-24/mes | Necesita Docker directo |
-| **Base de datos** | Supabase Pro o [Neon](https://neon.tech/) | $0-25/mes | PostgreSQL gestionado |
+| **FastAPI** | [Railway](https://railway.app/) or [Render](https://render.com/) | ~$7-20/month | Deploy with Git push |
+| **Evolution API** | Dedicated VPS (Hetzner/DO) | ~$6-24/month | Requires direct Docker |
+| **Database** | Supabase Pro or [Neon](https://neon.tech/) | $0-25/month | Managed PostgreSQL |
 
-### ⚠️ Importante: WhatsApp y Meta
+### ⚠️ Important: WhatsApp and Meta
 
-- Evolution API usa la **API no-oficial** de WhatsApp (Baileys). Es gratuita pero **Meta puede banear el número** si detectan uso agresivo.
-- Para un negocio serio a largo plazo, evalúa la [API oficial de WhatsApp Business](https://business.whatsapp.com/products/business-platform) vía [Twilio](https://www.twilio.com/) o [360dialog](https://www.360dialog.com/). Cuesta ~$0.05-0.10 por mensaje pero es 100% legal.
-- **Recomendación:** Arranca con Evolution API para validar. Si el negocio crece, migra a la API oficial.
+- Evolution API uses the **unofficial** WhatsApp API (Baileys). It's free but **Meta can ban the number** if they detect aggressive usage.
+- For a serious long-term business, evaluate the [official WhatsApp Business API](https://business.whatsapp.com/products/business-platform) via [Twilio](https://www.twilio.com/) or [360dialog](https://www.360dialog.com/). It costs ~$0.05-0.10 per message but is 100% legal.
+- **Recommendation:** Start with Evolution API to validate. If the business grows, migrate to the official API.
 
 ---
 
-## 📈 Tips para Vender este Producto
+## 📈 Tips for Selling This Product
 
-### 🎯 A quién venderle
+### 🎯 Who to sell to
 
-| Nicho | Por qué les sirve | Cómo venderlo |
+| Niche | Why it's useful | How to sell it |
 |---|---|---|
-| **Clínicas dentales / estéticas** | Reciben 50+ consultas por WhatsApp sobre precios y citas | "Tu recepcionista virtual que nunca duerme" |
-| **Inmobiliarias** | Leads preguntan por departamentos a toda hora | "Califica leads y te avisa solo los que quieren comprar" |
-| **E-commerce / tiendas online** | Preguntas de stock, precios, envío | "Responde al instante mientras duermes — 0 leads perdidos" |
-| **Academias / cursos** | "¿Cuánto cuesta?" "¿Cuándo empiezan?" | "Convierte consultas en matrículas 24/7" |
-| **Restaurantes / delivery** | Pedidos por WhatsApp | "Toma pedidos automáticamente" |
-| **Abogados / consultores** | Filtrar clientes serios de curiosos | "Solo te notifica cuando alguien está listo para pagar" |
+| **Dental / aesthetic clinics** | Receive 50+ WhatsApp inquiries about prices and appointments | "Your virtual receptionist that never sleeps" |
+| **Real estate agencies** | Leads ask about properties at all hours | "Qualifies leads and only alerts you for those ready to buy" |
+| **E-commerce / online stores** | Questions about stock, prices, shipping | "Responds instantly while you sleep — 0 lost leads" |
+| **Academies / courses** | "How much does it cost?" "When do classes start?" | "Converts inquiries into enrollments 24/7" |
+| **Restaurants / delivery** | Orders via WhatsApp | "Takes orders automatically" |
+| **Lawyers / consultants** | Filter serious clients from the curious | "Only notifies you when someone is ready to pay" |
 
-### 💲 Cómo cobrar
+### 💲 How to charge
 
-| Modelo | Precio sugerido | Para quién |
+| Model | Suggested price | For whom |
 |---|---|---|
-| **Setup + mensualidad** | $200-500 setup + $80-150/mes | PyMEs que quieren servicio gestionado |
-| **Solo mensualidad** | $120-200/mes (todo incluido) | Clientes que prefieren simplicidad |
-| **Por conversación** | $0.10-0.30 por conversación atendida | Alto volumen, empresas medianas |
-| **Freemium** | Gratis hasta 100 conv/mes, luego $99/mes | Para captar clientes masivamente |
+| **Setup + monthly fee** | $200-500 setup + $80-150/month | SMBs that want a managed service |
+| **Monthly only** | $120-200/month (all included) | Clients who prefer simplicity |
+| **Per conversation** | $0.10-0.30 per conversation handled | High volume, medium-sized companies |
+| **Freemium** | Free up to 100 conv/month, then $99/month | To acquire customers massively |
 
-### 🗣️ Frases que venden (script de venta)
+### 🗣️ Sales phrases (sales script)
 
-1. **El dolor:** *"¿Cuántos clientes te escriben por WhatsApp a las 11pm y nunca les contestas? Cada mensaje sin responder es dinero que se va a tu competencia."*
+1. **The pain:** *"How many customers message you on WhatsApp at 11pm and you never reply? Every unanswered message is money going to your competition."*
 
-2. **La solución:** *"Imagina que tienes un vendedor que trabaja 24/7, nunca se enferma, responde en 3 segundos y te avisa al instante cuando alguien quiere comprar."*
+2. **The solution:** *"Imagine having a salesperson that works 24/7, never gets sick, responds in 3 seconds, and instantly alerts you when someone wants to buy."*
 
-3. **La prueba:** *"Mira, te mando un mensaje ahora y mira cómo responde..."* → **Demo en vivo** (esto es tu arma más poderosa).
+3. **The proof:** *"Look, I'll send a message right now and watch how it responds..."* → **Live demo** (this is your most powerful weapon).
 
-4. **El cierre:** *"Si de cada 100 consultas que recibes, recuperas 5 ventas que antes perdías, ¿cuánto vale eso para tu negocio?"*
+4. **The close:** *"If out of every 100 inquiries you receive, you recover 5 sales you were losing before — how much is that worth to your business?"*
 
-### 🚀 Estrategia de lanzamiento
+### 🚀 Launch strategy
 
-1. **Semana 1-2:** Ofrécelo **gratis a 3 negocios amigos** durante 2 semanas. Consigue testimoniales y capturas de pantalla.
+1. **Week 1-2:** Offer it **free to 3 friend businesses** for 2 weeks. Get testimonials and screenshots.
 
-2. **Semana 3-4:** Publica los resultados en LinkedIn/Instagram: *"Este bot atendió 200 clientes en 14 días para [Negocio X] — sin que el dueño levantara un dedo"*.
+2. **Week 3-4:** Post results on LinkedIn/Instagram: *"This bot handled 200 customers in 14 days for [Business X] — without the owner lifting a finger."*
 
-3. **Mes 2:** Empieza a cobrar. Usa los casos de éxito como prueba social.
+3. **Month 2:** Start charging. Use success stories as social proof.
 
-4. **Mes 3+:** Agrega features diferenciadores:
-   - Dashboard web para que el cliente vea sus métricas
-   - Integración con Google Calendar para agendar citas
-   - Catálogo de productos con precios automáticos
-   - Respuestas con imágenes y PDFs
+4. **Month 3+:** Add differentiating features:
+   - Web dashboard for clients to see their metrics
+   - Google Calendar integration to schedule appointments
+   - Product catalog with automatic pricing
+   - Responses with images and PDFs
 
-### 💡 Diferenciadores vs la competencia
+### 💡 Differentiators vs the competition
 
-- **Personalización total:** Controlas el prompt de IA, los flujos y la lógica. No estás limitado a plantillas como Manychat o Chatfuel.
-- **Sin costo por mensaje:** Con Evolution API no pagas por mensaje (vs Twilio que cobra $0.05-0.10 cada uno).
-- **Clasificación inteligente:** El vendedor no pierde tiempo con curiosos — solo le llega lo que importa.
-- **Historial completo:** Toda la conversación se guarda en Supabase — se puede analizar para mejorar las respuestas.
+- **Full customization:** You control the AI prompt, flows, and logic. You're not limited to templates like Manychat or Chatfuel.
+- **No per-message cost:** With Evolution API you don't pay per message (vs Twilio at $0.05-0.10 each).
+- **Smart classification:** The salesperson doesn't waste time with curious people — only what matters comes through.
+- **Full history:** The entire conversation is saved in Supabase — it can be analyzed to improve responses.
 
 ---
 
-## 📄 Licencia
+## 📄 License
 
-Proyecto para uso educativo — Curso IA for Developers.
+Project for educational use — AI for Developers Course.

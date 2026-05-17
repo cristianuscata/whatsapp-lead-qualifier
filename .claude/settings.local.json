@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker compose up *)",
+      "Bash(curl -s http://localhost:8000/health)",
+      "Bash(curl -s -H \"apikey: crisagent2024\" http://localhost:8081/instance/fetchInstances)",
+      "Bash(docker volume *)",
+      "Bash(curl -s -X POST http://localhost:8081/instance/create -H 'apikey: crisagent2024' -H 'Content-Type: application/json' -d '{ *)",
+      "Bash(curl -s -H \"apikey: crisagent2024\" http://localhost:8081/instance/connect/mi-instancia)",
+      "Bash(python -c \"import sys, json, base64; data = json.load\\(sys.stdin\\); b64 = data.get\\('base64', ''\\).split\\(',', 1\\)[-1]; open\\('qr.png','wb'\\).write\\(base64.b64decode\\(b64\\)\\); print\\('QR guardado en qr.png'\\)\")",
+      "Bash(python -c \"import sys, json; data = json.load\\(sys.stdin\\); [print\\(f\\\\\"name={i.get\\('name'\\)}, connectionStatus={i.get\\('connectionStatus'\\)}, number={i.get\\('ownerJid', 'N/A'\\)}\\\\\"\\) for i in data]\")",
+      "Bash(curl -s -X DELETE -H \"apikey: crisagent2024\" http://localhost:8081/instance/delete/mi-instancia)",
+      "Bash(curl -s -X POST http://localhost:8081/instance/create -H \"apikey: crisagent2024\" -H \"Content-Type: application/json\" -d '{\"instanceName\": \"mi-instancia\", \"integration\": \"WHATSAPP-BAILEYS\", \"qrcode\": true}')",
+      "Bash(python -c \"import sys, json, base64; data = json.load\\(sys.stdin\\); b64 = data.get\\('qrcode', {}\\).get\\('base64', ''\\).split\\(',', 1\\)[-1]; open\\('qr.png','wb'\\).write\\(base64.b64decode\\(b64\\)\\); print\\('QR guardado en qr.png'\\)\")",
+      "Bash(start *)",
+      "Bash(python -c \"import sys, json; data = json.load\\(sys.stdin\\); [print\\(f\\\\\"name={i.get\\('name'\\)}, connectionStatus={i.get\\('connectionStatus'\\)}, ownerJid={i.get\\('ownerJid', 'NOT CONNECTED YET'\\)}\\\\\"\\) for i in data]\")"
+    ]
+  }
+}
