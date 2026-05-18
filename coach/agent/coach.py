@@ -151,6 +151,12 @@ async def _crear_y_confirmar(numero: str, intent: dict) -> None:
 
     await r_db.crear_recordatorio(tarea, hora_recordar, hora_seguimiento, hoy)
 
+    try:
+        from coach.integrations.calendar import crear_evento
+        crear_evento(tarea, hoy, hora_tarea)
+    except Exception as e:
+        log.warning(f"[CALENDAR] no se pudo crear el evento: {e}")
+
     respuesta = plantilla_confirmacion_recordatorio(
         tarea,
         hora_recordar.strftime("%H:%M"),
