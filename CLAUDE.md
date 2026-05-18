@@ -82,65 +82,78 @@ SUPABASE_URL=...
 SUPABASE_KEY=...                          # service_role key
 CRISTIAN_PHONE=51965373728@s.whatsapp.net
 COACH_ENABLED=true
+GOOGLE_CALENDAR_ID=primary
+GOOGLE_CREDS_DIR=/app/google
 ```
 
 ⚠️ Cambios al `.env` requieren recrear el container: `docker compose up -d --force-recreate agent`. Un simple restart NO toma las variables nuevas (env se lee al crear el container).
 
 ---
 
-## Recomendación de despliegue (decidido el 2026-05-17)
+## Despliegue — Hetzner Cloud CX22 (producción desde 2026-05-18)
 
-**Plan elegido: Hetzner Cloud CX22 (VPS, ~$4-6/mes)**, NO Railway.
+**VPS:** IP `178.105.163.82`, Ubuntu 24.04, CX22 (~$4-6/mes). Ya está corriendo.
 
-**Razón:** este stack es Docker-compose con 3 servicios y estado persistente (sesión de WhatsApp en volumen). Un VPS replica exactamente lo que ya anda en local sin reinventar nada. Railway está pensado para apps de un solo container; con 3 servicios + volúmenes se vuelve caro (~$10-15/mes) y complejo de configurar (cada servicio aparte, volúmenes manuales, networking interno con sintaxis distinta).
+**Para retomar en el server:**
+```bash
+ssh root@178.105.163.82
+cd whatsapp-lead-qualifier
+docker compose ps
+```
 
-**Pasos para deploy en Hetzner (cuando volvamos a esto):**
+**Deploy desde cero en otra máquina:**
+1. Crear VPS CX22 en Hetzner con Ubuntu 24.04.
+2. `curl -fsSL https://get.docker.com | sh`
+3. `git clone <repo> && cd whatsapp-lead-qualifier && git checkout private_coach`
+4. Crear `.env` con todos los valores (ver Gotcha #3).
+5. `scp -r google/ root@IP:/root/whatsapp-lead-qualifier/` (copiar credenciales de Calendar).
+6. `docker compose up -d --build`
+7. Escanear QR de WhatsApp: `ssh -L 8081:localhost:8081 root@IP` → Postman/curl a `POST http://localhost:8081/instance/create` con body `{"instanceName":"mi-instancia","integration":"WHATSAPP-BAILEYS","qrcode":true}` → `GET http://localhost:8081/instance/connect/mi-instancia` → escanear.
+8. Verificar: `GET http://localhost:8081/instance/fetchInstances` → `connectionStatus=open`, `ownerJid=51958213628@s.whatsapp.net`.
 
-1. Crear VPS CX22 en [hetzner.com/cloud](https://www.hetzner.com/cloud) con Ubuntu 24.04. Anotar IP pública.
-2. `ssh root@TU_IP`
-3. Instalar Docker: `curl -fsSL https://get.docker.com | sh`
-4. `git clone <repo> && cd whatsapp-lead-qualifier && git checkout private_coach`
-5. Crear `.env` en el server con los valores reales (`nano .env`).
-6. `docker compose up -d`
-7. **Escanear QR de nuevo** (la sesión no se puede copiar desde local cómodamente). Desde tu laptop: `ssh -L 8081:localhost:8081 root@TU_IP`, después en otra terminal local seguir los pasos del README sección "Connect WhatsApp" con `http://localhost:8081`.
-8. Listo, queda corriendo 24/7.
-
-**Lo que NO cambia en producción:** Supabase, OpenAI, y conceptualmente el número de WhatsApp (aunque la sesión hay que regenerarla en el server).
-
-**Cuándo migrar a Railway:** si en algún momento querés CI/CD automático (`git push` → deploy) y vale la pena pagar el doble. No es prioridad para MVP.
+**Gotcha deploy:** después de `git pull` siempre hacer `docker compose up -d --build`, no solo `up -d`. Si el módulo no aparece en el container, es que el build usó caché vieja.
 
 ---
 
-## Próximo trabajo pendiente — Google Calendar (decidido 2026-05-17)
+## Google Calendar — implementado 2026-05-18
 
-**Dirección elegida: Opción A — solo escribir.** El coach crea eventos en Calendar cuando se guarda un recordatorio. No lee Calendar todavía. (Si más adelante se quiere bidireccional, agregar `listar_eventos_del_dia()` y hookear en el `_arranque_dia()` del scheduler).
+**Estado:** funcionando en producción. El coach crea un evento en Calendar cada vez que se guarda un recordatorio (Opción A — solo escritura).
 
-**Setup que necesita Cristian antes de la sesión:**
-1. Proyecto en [Google Cloud Console](https://console.cloud.google.com).
-2. Habilitar Google Calendar API.
-3. OAuth 2.0 Client tipo **Desktop**. Descargar `credentials.json`.
+**Archivos:**
+- `coach/integrations/calendar.py` — `crear_evento(tarea, fecha, hora, duracion_min=30)`
+- `coach/integrations/calendar_auth.py` — script one-time para generar `token.json`
+- `google/credentials.json` y `google/token.json` — en el server en `/root/whatsapp-lead-qualifier/google/`, montados como volumen en `/app/google`. **Nunca se suben a GitHub** (están en `.gitignore`).
 
-**Plan de implementación:**
-- Agregar a `requirements.txt`: `google-auth-oauthlib`, `google-api-python-client`.
-- Crear `coach/integrations/calendar.py` con:
-  - `crear_evento(tarea: str, fecha: date, hora: time, duracion_min: int = 30) -> str` (devuelve event_id)
-  - Internamente: maneja el flujo OAuth con `credentials.json` + `token.json`.
-- Carpeta `google/` montada como volumen en `docker-compose.yml`: `./google:/app/google` para que `credentials.json` y `token.json` sobrevivan rebuilds.
-- Hook en `coach/agent/coach.py::_crear_y_confirmar()`: después del `await r_db.crear_recordatorio(...)`, llamar `calendar.crear_evento(...)` con try/except (un fallo de Calendar NO debe tirar la creación del recordatorio).
-- Opcional: guardar el `event_id` devuelto en una columna nueva `google_event_id` en `recordatorios` (requiere migration en Supabase).
-- Variables nuevas en `.env`: `GOOGLE_CALENDAR_ID=primary` (o un calendar específico), `GOOGLE_CREDS_DIR=/app/google`.
+**Hook:** `coach/agent/coach.py::_crear_y_confirmar()` llama `crear_evento()` con try/except — un fallo de Calendar no rompe el recordatorio.
 
-**Primera corrida (auth one-time):**
-- Hace falta correr el flow de OAuth UNA vez para generar `token.json`. Plan: agregar un script CLI `python -m coach.integrations.calendar_auth` que abra el browser, deje el `token.json`, y después el container ya lo consume. O hacerlo en local antes de subir el archivo.
+**Gotchas de Calendar (proceso complejo, documentar bien):**
+1. En Google Cloud Console: proyecto → habilitar Calendar API → OAuth 2.0 Client tipo **Desktop** → descargar `credentials.json`.
+2. En OAuth consent screen: agregar el Gmail del usuario como **Test user** (sin esto da `Error 403: access_denied`).
+3. Correr `python -m coach.integrations.calendar_auth` en local (abre browser) → genera `token.json`.
+4. Copiar carpeta `google/` al server con `scp -r google/ root@IP:/root/whatsapp-lead-qualifier/`.
+5. El `token.json` se auto-refresca con el refresh_token — no hay que repetir el flow OAuth.
+
+**Pendiente opcional:** guardar `event_id` en columna `google_event_id` de la tabla `recordatorios` (requiere migration en Supabase). Actualmente se loguea pero no se persiste.
+
+**Próxima mejora posible:** leer Calendar en `_arranque_dia()` del scheduler para mostrar agenda del día (bidireccional). Requiere agregar scope `calendar.readonly` y función `listar_eventos_del_dia()`.
 
 ---
 
 ## Cómo retomar el trabajo
 
-1. `docker compose ps` — ver si los 3 servicios están arriba.
-2. Si falta `agent`, levantarlo: `docker compose up -d`.
-3. `docker logs whatsapp-lead-qualifier-agent-1 --tail 30` — buscar línea `[COACH] scheduler iniciado` para confirmar que el coach arrancó.
-4. Verificar WhatsApp: `Invoke-RestMethod http://localhost:8081/instance/fetchInstances -Headers @{apikey="crisagent2024"}` → `connectionStatus=open` y `ownerJid=51958213628@s.whatsapp.net`.
-5. Mandar un mensaje desde tu celular personal (51965373728) al bot. Mirar logs para `[COACH]`.
+```bash
+ssh root@178.105.163.82
+cd whatsapp-lead-qualifier
+docker compose ps                                              # los 3 deben estar Up
+docker logs whatsapp-lead-qualifier-agent-1 --tail 30        # buscar [COACH] scheduler iniciado
+```
+
+Verificar WhatsApp (desde laptop con túnel SSH activo o directo en el server):
+```bash
+curl http://localhost:8081/instance/fetchInstances -H "apikey: crisagent2024"
+# connectionStatus=open, ownerJid=51958213628@s.whatsapp.net
+```
+
+Mandar un mensaje desde `51965373728` al bot y mirar logs para `[COACH]` y `[CALENDAR]`.
 
 Si nada de eso anda, mirá la sección "Troubleshooting" del README — el orden ahí está priorizado por frecuencia real.
