@@ -2,6 +2,7 @@ services:
 
   agent:
     build: .
+    restart: always
     ports:
       - "8000:8000"
     env_file:
@@ -11,6 +12,7 @@ services:
   # EvolutionAPI v2 (WhatsApp gateway)
   evolution:
     image: evoapicloud/evolution-api:latest
+    restart: always
     ports:
       - "8081:8080"
     environment:
@@ -33,6 +35,7 @@ services:
 
   evolution-postgres:
     image: postgres:15-alpine
+    restart: always
     environment:
       - POSTGRES_DB=evolution
       - POSTGRES_USER=evolution
