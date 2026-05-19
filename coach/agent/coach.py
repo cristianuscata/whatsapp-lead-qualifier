@@ -149,6 +149,15 @@ async def _crear_y_confirmar(numero: str, intent: dict) -> None:
     hora_recordar    = (momento_tarea - timedelta(minutes=5)).time()
     hora_seguimiento = (momento_tarea + timedelta(minutes=30)).time()
 
+    # Detectar conflicto con Calendar ANTES de crear (no bloqueante, solo informativo)
+    conflicto = None
+    try:
+        from coach.integrations.calendar import listar_eventos, detectar_conflicto
+        eventos_hoy = listar_eventos(hoy)
+        conflicto = detectar_conflicto(eventos_hoy, hoy, hora_tarea)
+    except Exception as e:
+        log.warning(f"[CALENDAR] no pude verificar conflictos: {e}")
+
     await r_db.crear_recordatorio(tarea, hora_recordar, hora_seguimiento, hoy)
 
     try:
@@ -162,5 +171,12 @@ async def _crear_y_confirmar(numero: str, intent: dict) -> None:
         hora_recordar.strftime("%H:%M"),
         hora_tarea.strftime("%H:%M"),
     )
+    if conflicto:
+        respuesta += (
+            f"\n\n⚠️ Ojo: a esa hora tenés *{conflicto['summary']}* "
+            f"({conflicto['hora_inicio']}–{conflicto['hora_fin']}) en Calendar. "
+            f"Si lo movés decime."
+        )
+
     await m_db.guardar("assistant", respuesta, tipo="confirmacion_recordatorio")
     await enviar_mensaje(numero, respuesta)

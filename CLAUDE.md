@@ -29,8 +29,9 @@ Tres containers en `docker-compose.yml`:
 | `evolution-postgres` | 5432 | — | DB interna de Evolution (separada de Supabase) |
 
 Externos:
-- **Supabase** — DB de app (tablas `mensajes`, `recordatorios`, `coach_mensajes`).
-- **OpenAI** — GPT-4o-mini para clasificación, intent detection y respuestas.
+- **Supabase** — DB de app (tablas `recordatorios` y `coach_mensajes`).
+- **OpenAI** — GPT-4o-mini para intent detection y respuestas del coach.
+- **Google Calendar** — destino de los eventos creados por el bot (scope `calendar.events`, incluye lectura).
 
 ---
 
@@ -115,27 +116,47 @@ docker compose ps
 
 ---
 
-## Google Calendar — implementado 2026-05-18
+## Google Calendar — bidireccional (escritura + lectura)
 
-**Estado:** funcionando en producción. El coach crea un evento en Calendar cada vez que se guarda un recordatorio (Opción A — solo escritura).
+**Estado:** lectura y escritura funcionando.
+
+**Scope:** `calendar.events` (incluye lectura). No hace falta `calendar.readonly` aparte ni re-auth para agregar features de lectura.
 
 **Archivos:**
-- `coach/integrations/calendar.py` — `crear_evento(tarea, fecha, hora, duracion_min=30)`
-- `coach/integrations/calendar_auth.py` — script one-time para generar `token.json`
+- `coach/integrations/calendar.py`:
+  - `crear_evento(tarea, fecha, hora, duracion_min=30)` — inserta evento.
+  - `listar_eventos(fecha)` — devuelve eventos timed del día (ignora all-day). Nunca lanza, devuelve `[]` si falla.
+  - `detectar_conflicto(eventos, fecha, hora_tarea, duracion_min=30)` — primer evento que se solapa, o `None`.
+- `coach/integrations/calendar_auth.py` — script one-time para generar `token.json`.
 - `google/credentials.json` y `google/token.json` — en el server en `/root/whatsapp-lead-qualifier/google/`, montados como volumen en `/app/google`. **Nunca se suben a GitHub** (están en `.gitignore`).
 
-**Hook:** `coach/agent/coach.py::_crear_y_confirmar()` llama `crear_evento()` con try/except — un fallo de Calendar no rompe el recordatorio.
+**Hooks activos:**
+- `coach/agent/coach.py::_crear_y_confirmar()` — al crear un recordatorio: detecta conflicto con Calendar e incluye una advertencia no-bloqueante en la confirmación. Después inserta el evento.
+- `coach/scheduler.py::_arranque_dia()` (06:30) — incluye eventos de Calendar de HOY junto a las tareas en el briefing matutino.
+- `coach/scheduler.py::_cierre_dia()` (21:00) — incluye eventos de Calendar de MAÑANA en la vista del día siguiente.
 
-**Gotchas de Calendar (proceso complejo, documentar bien):**
-1. En Google Cloud Console: proyecto → habilitar Calendar API → OAuth 2.0 Client tipo **Desktop** → descargar `credentials.json`.
-2. En OAuth consent screen: agregar el Gmail del usuario como **Test user** (sin esto da `Error 403: access_denied`).
-3. Correr `python -m coach.integrations.calendar_auth` en local (abre browser) → genera `token.json`.
-4. Copiar carpeta `google/` al server con `scp -r google/ root@IP:/root/whatsapp-lead-qualifier/`.
-5. El `token.json` se auto-refresca con el refresh_token — no hay que repetir el flow OAuth.
+**Performance gotcha:** `listar_eventos()` es síncrono (Google SDK) llamado desde funciones async. Bloquea el event loop ~1 segundo. Aceptable para v1 (3-4 calls/día + 1 por intent). Si crece a algo más interactivo, envolver en `asyncio.to_thread()`.
 
-**Pendiente opcional:** guardar `event_id` en columna `google_event_id` de la tabla `recordatorios` (requiere migration en Supabase). Actualmente se loguea pero no se persiste.
+**Setup inicial (cuando reinstalás en otra máquina):**
+1. Google Cloud Console: proyecto → habilitar Calendar API → OAuth 2.0 Client tipo **Desktop** → descargar `credentials.json`.
+2. OAuth consent screen: agregar el Gmail del usuario como **Test user** (sin esto: `Error 403: access_denied`).
+3. `python -m coach.integrations.calendar_auth` en local (abre browser) → genera `token.json`.
+4. `scp -r google/ root@IP:/root/whatsapp-lead-qualifier/`.
+5. `token.json` se auto-refresca con el refresh_token.
 
-**Próxima mejora posible:** leer Calendar en `_arranque_dia()` del scheduler para mostrar agenda del día (bidireccional). Requiere agregar scope `calendar.readonly` y función `listar_eventos_del_dia()`.
+**Pendiente opcional:** persistir `event_id` en columna `google_event_id` de `recordatorios` (requiere migration en Supabase). Hoy solo se loguea.
+
+---
+
+## Revisión semanal de metas — domingos 20:00
+
+**Job:** `_revision_semanal_metas` en `coach/scheduler.py`. CronTrigger: `day_of_week="sun", hour=20, minute=0`.
+
+**Cómo elige:** toma 2 metas al azar (`random.sample`) de `METAS_ACTIVAS` en `coach/agent/prompts.py`. La lista es ahora una estructura `[{key, descripcion}, ...]` que se inyecta en `SYSTEM_COACH` para que sea single source of truth.
+
+**Para agregar/quitar una meta:** editar `METAS_ACTIVAS` en `coach/agent/prompts.py`. El system prompt y el job semanal lo toman automáticamente.
+
+**Variante futura posible:** rotación en vez de random (no repetir hasta cubrir todas), o priorizar la meta que menos se mencionó en `coach_mensajes` en las últimas semanas.
 
 ---
 
