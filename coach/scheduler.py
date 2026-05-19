@@ -2,7 +2,8 @@
 APScheduler con todos los jobs proactivos del coach.
 
 Jobs:
-- Cada minuto:        revisa avisos (5 min antes) y preguntas de seguimiento (30 min después).
+- Cada minuto:        revisa avisos (5 min antes) y preguntas de seguimiento (30 min después) de recordatorios DB.
+- Cada 5 min:         revisa eventos de Calendar → aviso 10 min antes, seguimiento 15 min después.
 - 06:30 (Lima, todos los días):  arranque del día — tareas + eventos de Calendar + versículo.
 - 12:00 (Lima):       check del mediodía sobre la tarea de la mañana.
 - 12:30 (Lima):       si Cristian no respondió → recordatorio.
@@ -43,6 +44,9 @@ CRISTIAN_PHONE = os.getenv("CRISTIAN_PHONE", "")
 # Estado en memoria (se reinicia con la app — aceptable para v1)
 _seguimientos_preguntados: set[int] = set()
 _check_mediodia_respondido: dict[str, bool] = {}
+# Eventos de Calendar ya notificados/preguntados hoy (key = "HH:MM|summary")
+_eventos_avisados: set[str] = set()
+_eventos_seguimiento: set[str] = set()
 
 
 def iniciar_scheduler() -> AsyncIOScheduler | None:
@@ -59,6 +63,7 @@ def iniciar_scheduler() -> AsyncIOScheduler | None:
 
     sched = AsyncIOScheduler(timezone=TZ_LIMA)
     sched.add_job(_tick_recordatorios,      CronTrigger(second=0))
+    sched.add_job(_tick_eventos_calendar,   CronTrigger(minute="*/5", second=30))
     sched.add_job(_arranque_dia,            CronTrigger(hour=6,  minute=30))
     sched.add_job(_check_mediodia,          CronTrigger(hour=12, minute=0))
     sched.add_job(_recordatorio_12_30,      CronTrigger(hour=12, minute=30))
@@ -119,6 +124,69 @@ async def _tick_recordatorios() -> None:
         log.error(f"[COACH] _tick_recordatorios: {e}")
 
 
+async def _tick_eventos_calendar() -> None:
+    """Cada 5 min: avisa 10 min antes de un evento Calendar, pregunta 15 min después.
+    Ignora eventos que ya están como recordatorios en la DB (para no duplicar)."""
+    try:
+        ahora = datetime.now(TZ_LIMA)
+        hoy = ahora.date()
+        eventos = listar_eventos(hoy)
+
+        # Nombres de tareas en la DB hoy → para no duplicar con el tick de recordatorios
+        tareas_db = await r_db.tareas_del_dia(hoy)
+        nombres_db = {t["tarea"].lower().strip() for t in tareas_db}
+
+        for ev in eventos:
+            # Si el evento fue creado por el bot (existe como recordatorio), skip
+            if ev["summary"].lower().strip() in nombres_db:
+                continue
+            key = f"{ev['hora_inicio']}|{ev['summary']}"
+            inicio = ev["inicio_dt"]
+            fin = ev["fin_dt"]
+            minutos_para_inicio = (inicio - ahora).total_seconds() / 60
+            minutos_desde_fin = (ahora - fin).total_seconds() / 60
+
+            # Aviso previo: entre 10 y 0 minutos antes del inicio
+            if 0 <= minutos_para_inicio <= 10 and key not in _eventos_avisados:
+                _eventos_avisados.add(key)
+                try:
+                    instr = (
+                        f"Cristian tiene '{ev['summary']}' a las {ev['hora_inicio']}. "
+                        f"Faltan ~{int(minutos_para_inicio)} minutos. "
+                        "Avisale que se prepare. Máximo 3 líneas, tono directo y motivador."
+                    )
+                    texto = await generar_mensaje(instr)
+                except Exception:
+                    texto = (
+                        f"⏰ En unos minutos: *{ev['summary']}* ({ev['hora_inicio']})\n"
+                        f"Preparate, Cristian."
+                    )
+                await _enviar(texto, tipo="aviso_evento_calendar")
+                log.info(f"[CALENDAR] aviso previo enviado: {ev['summary']}")
+
+            # Seguimiento: entre 15 y 30 minutos después de que terminó
+            if 15 <= minutos_desde_fin <= 30 and key not in _eventos_seguimiento:
+                _eventos_seguimiento.add(key)
+                try:
+                    instr = (
+                        f"'{ev['summary']}' estaba programado de {ev['hora_inicio']} a {ev['hora_fin']}. "
+                        "Ya pasó. Preguntale a Cristian si lo cumplió. "
+                        "Máximo 3 líneas, directo."
+                    )
+                    texto = await generar_mensaje(instr)
+                except Exception:
+                    texto = (
+                        f"¿Cumpliste con *{ev['summary']}* "
+                        f"(de las {ev['hora_inicio']})?\n"
+                        f"Respondé: sí / no / a medias"
+                    )
+                await _enviar(texto, tipo="seguimiento_evento_calendar")
+                log.info(f"[CALENDAR] seguimiento enviado: {ev['summary']}")
+
+    except Exception as e:
+        log.error(f"[COACH] _tick_eventos_calendar: {e}")
+
+
 def _formatear_eventos(eventos: list[dict]) -> str:
     if not eventos:
         return "(sin eventos)"
@@ -160,6 +228,8 @@ async def _arranque_dia() -> None:
             )
         await _enviar(texto, tipo="arranque_dia")
         _seguimientos_preguntados.clear()
+        _eventos_avisados.clear()
+        _eventos_seguimiento.clear()
         _check_mediodia_respondido.pop(hoy.isoformat(), None)
     except Exception as e:
         log.error(f"[COACH] _arranque_dia: {e}")
