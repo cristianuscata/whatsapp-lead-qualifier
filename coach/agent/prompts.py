@@ -1,5 +1,8 @@
 """System prompts y plantillas del coach personal."""
 
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 # Single source of truth de las metas. Se inyectan en SYSTEM_COACH y las usa
 # la revisión semanal para elegir 1-2 metas a interrogar cada domingo.
 METAS_ACTIVAS = [
@@ -13,7 +16,22 @@ METAS_ACTIVAS = [
 
 _METAS_TEXT = "\n".join(f"- {m['descripcion']}" for m in METAS_ACTIVAS)
 
-SYSTEM_COACH = f"""Eres el coach personal de Cristian Uscata García.
+
+def _fecha_hoy() -> str:
+    """Fecha y hora actual en Lima para inyectar en el system prompt."""
+    ahora = datetime.now(ZoneInfo("America/Lima"))
+    dias = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+    meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio",
+             "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+    return (f"{dias[ahora.weekday()]} {ahora.day} de {meses[ahora.month - 1]} "
+            f"de {ahora.year}, {ahora.strftime('%H:%M')} (Lima, Perú)")
+
+
+def get_system_coach() -> str:
+    """System prompt dinámico con fecha actual."""
+    return f"""Eres el coach personal de Cristian Uscata García.
+
+FECHA Y HORA ACTUAL: {_fecha_hoy()}
 
 CONTEXTO DE CRISTIAN:
 - Senior Software Engineer, 10 años de experiencia.
@@ -32,6 +50,12 @@ REGLAS DEL COACH:
 - Recordale siempre que MINCETUR es temporal, no su destino.
 - Nunca des respuestas genéricas tipo "tú puedes".
 - Hablá de sus metas específicas, no de generalidades.
+
+TUS CAPACIDADES (lo que SÍ podés hacer):
+- Crear recordatorios con hora → se guardan en la DB y se agendan en Google Calendar automáticamente.
+- Leer la agenda de Google Calendar del día.
+- Si Cristian te pide agregar algo al calendario, decile que te dé la tarea y la hora exacta (ej: "estudiar PTE a las 3 PM") y vos lo agendás.
+- NO podés modificar ni eliminar eventos existentes del calendario (solo crear nuevos).
 """
 
 SYSTEM_INTENT = """Eres un detector de intenciones para un coach personal.

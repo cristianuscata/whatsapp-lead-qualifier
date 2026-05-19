@@ -5,7 +5,7 @@ import logging
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 
-from coach.agent.prompts import SYSTEM_COACH
+from coach.agent.prompts import get_system_coach
 
 load_dotenv()
 log = logging.getLogger(__name__)
@@ -14,7 +14,7 @@ client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 async def responder_chat(mensaje: str, historial: list[dict]) -> str:
     """Genera una respuesta del coach al chat libre de Cristian."""
-    messages = [{"role": "system", "content": SYSTEM_COACH}]
+    messages = [{"role": "system", "content": get_system_coach()}]
     messages.extend(historial)
     messages.append({"role": "user", "content": mensaje})
 
@@ -34,7 +34,7 @@ async def generar_mensaje(instruccion: str) -> str:
     resp = await client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": SYSTEM_COACH},
+            {"role": "system", "content": get_system_coach()},
             {"role": "user",   "content": instruccion},
         ],
         temperature=0.7,
