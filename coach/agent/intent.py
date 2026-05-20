@@ -3,12 +3,13 @@
 import os
 import json
 import logging
-from datetime import time as dtime
+from datetime import datetime, time as dtime, date as ddate
+from zoneinfo import ZoneInfo
 
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 
-from coach.agent.prompts import SYSTEM_INTENT, INTENT_SCHEMA
+from coach.agent.prompts import get_system_intent, INTENT_SCHEMA
 
 load_dotenv()
 log = logging.getLogger(__name__)
@@ -17,14 +18,23 @@ client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 async def detectar_recordatorio(mensaje: str) -> dict | None:
     """
-    Devuelve {"tarea": str, "hora": time} si detecta intención, o None.
+    Devuelve {"tarea": str, "hora": time, "fecha": date} si detecta intención, o None.
     Tolerante a fallos: ante cualquier error devuelve None y loguea.
     """
     try:
+        ahora = datetime.now(ZoneInfo("America/Lima"))
+        dias = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+        meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio",
+                 "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+        fecha_ref_str = (f"{dias[ahora.weekday()]} {ahora.day} de {meses[ahora.month - 1]} "
+                         f"de {ahora.year}, {ahora.strftime('%H:%M')} (Lima, Perú)")
+
+        system_prompt = get_system_intent(fecha_ref_str)
+
         resp = await client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": SYSTEM_INTENT},
+                {"role": "system", "content": system_prompt},
                 {"role": "user",   "content": mensaje},
             ],
             response_format=INTENT_SCHEMA,
@@ -40,6 +50,7 @@ async def detectar_recordatorio(mensaje: str) -> dict | None:
 
     tarea = (data.get("tarea") or "").strip()
     hora_str = data.get("hora_hhmm") or ""
+    fecha_str = data.get("fecha_yyyymmdd") or ""
     if not tarea or not hora_str:
         return None
 
@@ -50,4 +61,11 @@ async def detectar_recordatorio(mensaje: str) -> dict | None:
         log.warning(f"[COACH] hora inválida del intent: {hora_str!r}")
         return None
 
-    return {"tarea": tarea, "hora": hora}
+    try:
+        y, m, d = map(int, fecha_str.split("-"))
+        fecha = ddate(year=y, month=m, day=d)
+    except (ValueError, AttributeError):
+        log.warning(f"[COACH] fecha inválida del intent: {fecha_str!r}, usando hoy")
+        fecha = ahora.date()
+
+    return {"tarea": tarea, "hora": hora, "fecha": fecha}

@@ -8,4 +8,4 @@ venv/
 .mypy_cache/
 dist/
 *.egg-info/
-"google/" 
+google/ 

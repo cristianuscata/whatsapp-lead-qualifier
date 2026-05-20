@@ -31,6 +31,20 @@ from coach.agent.prompts import (
     plantilla_pregunta_seguimiento,
     plantilla_recordatorio_12_30,
 )
+from coach.agent.state import (
+    get_seguimientos_preguntados,
+    add_seguimiento_preguntado,
+    clear_seguimientos_preguntados,
+    get_eventos_avisados,
+    add_evento_avisado,
+    clear_eventos_avisados,
+    get_eventos_seguimiento,
+    add_evento_seguimiento,
+    clear_eventos_seguimiento,
+    get_check_mediodia_respondido,
+    set_check_mediodia_respondido,
+    remove_check_mediodia_respondido,
+)
 from coach.db import mensajes as m_db
 from coach.db import recordatorios as r_db
 from coach.integrations.calendar import listar_eventos
@@ -40,13 +54,6 @@ load_dotenv()
 log = logging.getLogger(__name__)
 TZ_LIMA = ZoneInfo("America/Lima")
 CRISTIAN_PHONE = os.getenv("CRISTIAN_PHONE", "")
-
-# Estado en memoria (se reinicia con la app — aceptable para v1)
-_seguimientos_preguntados: set[int] = set()
-_check_mediodia_respondido: dict[str, bool] = {}
-# Eventos de Calendar ya notificados/preguntados hoy (key = "HH:MM|summary")
-_eventos_avisados: set[str] = set()
-_eventos_seguimiento: set[str] = set()
 
 
 def iniciar_scheduler() -> AsyncIOScheduler | None:
@@ -77,7 +84,7 @@ def iniciar_scheduler() -> AsyncIOScheduler | None:
 def marcar_check_mediodia_respondido() -> None:
     """Coach.py llama esto cuando llega cualquier mensaje de Cristian."""
     hoy = datetime.now(TZ_LIMA).date().isoformat()
-    _check_mediodia_respondido[hoy] = True
+    set_check_mediodia_respondido(hoy, True)
 
 
 # ── Helpers internos ──
@@ -111,14 +118,14 @@ async def _tick_recordatorios() -> None:
             log.info(f"[COACH] aviso enviado: {rec['tarea']}")
 
         for rec in await r_db.pendientes_seguimiento(fecha, hora):
-            if rec["id"] in _seguimientos_preguntados:
+            if rec["id"] in get_seguimientos_preguntados():
                 continue
             hora_tarea = _add_minutes(rec["hora_recordar"], 5)
             await _enviar(
                 plantilla_pregunta_seguimiento(rec["tarea"], hora_tarea),
                 tipo="seguimiento_pregunta",
             )
-            _seguimientos_preguntados.add(rec["id"])
+            add_seguimiento_preguntado(rec["id"])
             log.info(f"[COACH] seguimiento preguntado: {rec['tarea']}")
     except Exception as e:
         log.error(f"[COACH] _tick_recordatorios: {e}")
@@ -147,30 +154,30 @@ async def _tick_eventos_calendar() -> None:
             minutos_desde_fin = (ahora - fin).total_seconds() / 60
 
             # Aviso previo: entre 10 y 0 minutos antes del inicio
-            if 0 <= minutos_para_inicio <= 10 and key not in _eventos_avisados:
-                _eventos_avisados.add(key)
+            if 0 <= minutos_para_inicio <= 10 and key not in get_eventos_avisados():
+                add_evento_avisado(key)
                 try:
                     instr = (
                         f"Cristian tiene '{ev['summary']}' a las {ev['hora_inicio']}. "
                         f"Faltan ~{int(minutos_para_inicio)} minutos. "
-                        "Avisale que se prepare. Máximo 3 líneas, tono directo y motivador."
+                        "Avísale que se prepare. Máximo 3 líneas, tono directo y motivador."
                     )
                     texto = await generar_mensaje(instr)
                 except Exception:
                     texto = (
                         f"⏰ En unos minutos: *{ev['summary']}* ({ev['hora_inicio']})\n"
-                        f"Preparate, Cristian."
+                        f"Prepárate, Cristian."
                     )
                 await _enviar(texto, tipo="aviso_evento_calendar")
                 log.info(f"[CALENDAR] aviso previo enviado: {ev['summary']}")
 
             # Seguimiento: entre 15 y 30 minutos después de que terminó
-            if 15 <= minutos_desde_fin <= 30 and key not in _eventos_seguimiento:
-                _eventos_seguimiento.add(key)
+            if 15 <= minutos_desde_fin <= 30 and key not in get_eventos_seguimiento():
+                add_evento_seguimiento(key)
                 try:
                     instr = (
                         f"'{ev['summary']}' estaba programado de {ev['hora_inicio']} a {ev['hora_fin']}. "
-                        "Ya pasó. Preguntale a Cristian si lo cumplió. "
+                        "Ya pasó. Pregúntale a Cristian si lo cumplió. "
                         "Máximo 3 líneas, directo."
                     )
                     texto = await generar_mensaje(instr)
@@ -178,7 +185,7 @@ async def _tick_eventos_calendar() -> None:
                     texto = (
                         f"¿Cumpliste con *{ev['summary']}* "
                         f"(de las {ev['hora_inicio']})?\n"
-                        f"Respondé: sí / no / a medias"
+                        f"Responde: sí / no / a medias"
                     )
                 await _enviar(texto, tipo="seguimiento_evento_calendar")
                 log.info(f"[CALENDAR] seguimiento enviado: {ev['summary']}")
@@ -207,7 +214,7 @@ async def _arranque_dia() -> None:
         listado_eventos = _formatear_eventos(eventos)
 
         instr = (
-            "Es 6:30 AM. Generá el mensaje de arranque del día para Cristian. "
+            "Es 6:30 AM. Genera el mensaje de arranque del día para Cristian. "
             "Tareas programadas hoy (recordatorios del coach):\n"
             f"{listado_tareas}\n\n"
             "Eventos en tu Google Calendar hoy (meetings, citas, compromisos):\n"
@@ -224,13 +231,13 @@ async def _arranque_dia() -> None:
                 f"Tareas:\n{listado_tareas}\n"
                 f"Calendar:\n{listado_eventos}\n"
                 "'El alma diligente será prosperada' — Prov 13:4\n"
-                "¿Cuál atacás primero?"
+                "¿Cuál atacas primero?"
             )
         await _enviar(texto, tipo="arranque_dia")
-        _seguimientos_preguntados.clear()
-        _eventos_avisados.clear()
-        _eventos_seguimiento.clear()
-        _check_mediodia_respondido.pop(hoy.isoformat(), None)
+        clear_seguimientos_preguntados()
+        clear_eventos_avisados()
+        clear_eventos_seguimiento()
+        remove_check_mediodia_respondido(hoy.isoformat())
     except Exception as e:
         log.error(f"[COACH] _arranque_dia: {e}")
 
@@ -250,10 +257,10 @@ async def _check_mediodia() -> None:
         texto = (
             "☀️ Check del mediodía.\n"
             f"¿Cumpliste con la tarea de la mañana ({tarea_str})?\n"
-            "Respondé: sí / no / a medias"
+            "Responde: sí / no / a medias"
         )
         await _enviar(texto, tipo="check_mediodia")
-        _check_mediodia_respondido[hoy.isoformat()] = False
+        set_check_mediodia_respondido(hoy.isoformat(), False)
     except Exception as e:
         log.error(f"[COACH] _check_mediodia: {e}")
 
@@ -262,7 +269,7 @@ async def _recordatorio_12_30() -> None:
     try:
         hoy = datetime.now(TZ_LIMA).date().isoformat()
         # Si nunca se envió check (sin tareas mañana) o ya respondió → nada
-        if _check_mediodia_respondido.get(hoy, True):
+        if get_check_mediodia_respondido(hoy):
             return
         await _enviar(plantilla_recordatorio_12_30(), tipo="recordatorio_check")
     except Exception as e:
@@ -332,11 +339,11 @@ async def _revision_semanal_metas() -> None:
         descripciones = "\n".join(f"- {m['descripcion']}" for m in metas)
 
         instr = (
-            "Es domingo 8 PM, momento de revisión semanal. Generá un mensaje para "
+            "Es domingo 8 PM, momento de revisión semanal. Genera un mensaje para "
             "Cristian enfocándote SOLO en estas metas (no inventes otras):\n"
             f"{descripciones}\n\n"
-            "Para cada meta: preguntale cómo va, qué concreto falta, y qué se compromete "
-            "a hacer esta semana. Sé directo, sin endulzar. Cerrá con versículo. "
+            "Para cada meta: pregúntale cómo va, qué concreto falta, y qué se compromete "
+            "a hacer esta semana. Sé directo, sin endulzar. Cierra con versículo. "
             "Máximo 8 líneas."
         )
         try:
@@ -347,7 +354,7 @@ async def _revision_semanal_metas() -> None:
             texto = (
                 f"📅 Revisión semanal — domingo.\n"
                 f"Hablemos de: {keys}.\n"
-                "¿Cómo vas con cada una? ¿Qué hacés esta semana?\n"
+                "¿Cómo vas con cada una? ¿Qué haces esta semana?\n"
                 "'Examínate a ti mismo' — 2 Cor 13:5"
             )
         await _enviar(texto, tipo="revision_semanal")

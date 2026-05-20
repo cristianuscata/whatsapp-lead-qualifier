@@ -14,7 +14,26 @@ client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 async def responder_chat(mensaje: str, historial: list[dict]) -> str:
     """Genera una respuesta del coach al chat libre de Cristian."""
-    messages = [{"role": "system", "content": get_system_coach()}]
+    # Obtener eventos de Google Calendar para hoy
+    try:
+        from coach.integrations.calendar import listar_eventos
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        hoy = datetime.now(ZoneInfo("America/Lima")).date()
+        eventos = listar_eventos(hoy)
+    except Exception as e:
+        log.warning(f"[OPENAI_COACH] no se pudo listar eventos del calendario para inyectar al chat: {e}")
+        eventos = []
+
+    if eventos:
+        eventos_lineas = [f"- {ev['hora_inicio']} - {ev['hora_fin']}: {ev['summary']}" for ev in eventos]
+        eventos_str = "EVENTOS EN TU GOOGLE CALENDAR HOY:\n" + "\n".join(eventos_lineas)
+    else:
+        eventos_str = "EVENTOS EN TU GOOGLE CALENDAR HOY:\n(No hay eventos registrados para hoy)"
+
+    system_prompt = f"{get_system_coach()}\n\n{eventos_str}"
+
+    messages = [{"role": "system", "content": system_prompt}]
     messages.extend(historial)
     messages.append({"role": "user", "content": mensaje})
 

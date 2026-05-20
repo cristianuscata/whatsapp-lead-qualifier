@@ -67,7 +67,7 @@ async def coach_handle_message(numero: str, mensaje: str) -> None:
         respuesta = await responder_chat(texto, historial)
     except Exception as e:
         log.error(f"[COACH] error generando respuesta: {e}")
-        respuesta = "Estoy teniendo un problema momentáneo. Volvé a escribirme en un minuto."
+        respuesta = "Estoy teniendo un problema momentáneo. Vuelve a escribirme en un minuto."
     await m_db.guardar("assistant", respuesta)
     await enviar_mensaje(numero, respuesta)
 
@@ -88,7 +88,7 @@ async def _procesar_feedback(numero: str, feedback) -> None:
     if not pendiente:
         respuesta = (
             "No tengo un recordatorio abierto para asociar tu respuesta. "
-            "¿Querés contarme qué pasó?"
+            "¿Quieres contarme qué pasó?"
         )
         await m_db.guardar("assistant", respuesta)
         await enviar_mensaje(numero, respuesta)
@@ -101,7 +101,7 @@ async def _procesar_feedback(numero: str, feedback) -> None:
         await r_db.marcar_cumplido(rec_id, True)
         instr = (
             f"Cristian acaba de confirmar que cumplió: '{tarea}'. "
-            "Celebrá genuinamente en máximo 4 líneas, con versículo."
+            "Celebra genuinamente en máximo 4 líneas, con versículo."
         )
         try:
             respuesta = await generar_mensaje(instr)
@@ -109,8 +109,8 @@ async def _procesar_feedback(numero: str, feedback) -> None:
             log.error(f"[COACH] error generando celebración: {e}")
             respuesta = (
                 f"🔥 Así se hace: {tarea}.\n"
-                f"Cada paso suma a Sydney.\n"
-                f"'Todo lo puedo en Cristo' — Fil 4:13"
+                f"Cada paso te acerca a Sydney.\n"
+                f"'Todo lo puedo en Cristo que me fortalece' — Fil 4:13"
             )
 
     elif feedback is False:
@@ -123,7 +123,7 @@ async def _procesar_feedback(numero: str, feedback) -> None:
         await r_db.marcar_reprogramado(rec_id)
         instr = (
             f"Cristian cumplió a medias con: '{tarea}'. "
-            "Confrontá con amor, sin juzgar, y empujá a ejecución completa. "
+            "Confronta con amor, sin juzgar, y empuja a ejecución completa. "
             "Máximo 4 líneas, con versículo."
         )
         try:
@@ -132,7 +132,7 @@ async def _procesar_feedback(numero: str, feedback) -> None:
             log.error(f"[COACH] error generando confrontación: {e}")
             respuesta = (
                 f"A medias no cuenta como cumplido. Sin juicio, pero la verdad duele.\n"
-                f"¿Qué necesitás para terminarlo hoy?\n"
+                f"¿Qué necesitas para terminarlo hoy?\n"
                 f"'No os canséis de hacer el bien' — Gál 6:9"
             )
 
@@ -142,10 +142,11 @@ async def _procesar_feedback(numero: str, feedback) -> None:
 
 async def _crear_y_confirmar(numero: str, intent: dict) -> None:
     hoy = datetime.now(TZ_LIMA).date()
+    fecha_tarea = intent.get("fecha") or hoy
     hora_tarea = intent["hora"]
     tarea = intent["tarea"]
 
-    momento_tarea = datetime.combine(hoy, hora_tarea)
+    momento_tarea = datetime.combine(fecha_tarea, hora_tarea)
     hora_recordar    = (momento_tarea - timedelta(minutes=5)).time()
     hora_seguimiento = (momento_tarea + timedelta(minutes=30)).time()
 
@@ -153,29 +154,38 @@ async def _crear_y_confirmar(numero: str, intent: dict) -> None:
     conflicto = None
     try:
         from coach.integrations.calendar import listar_eventos, detectar_conflicto
-        eventos_hoy = listar_eventos(hoy)
-        conflicto = detectar_conflicto(eventos_hoy, hoy, hora_tarea)
+        eventos_fecha = listar_eventos(fecha_tarea)
+        conflicto = detectar_conflicto(eventos_fecha, fecha_tarea, hora_tarea)
     except Exception as e:
         log.warning(f"[CALENDAR] no pude verificar conflictos: {e}")
 
-    await r_db.crear_recordatorio(tarea, hora_recordar, hora_seguimiento, hoy)
+    await r_db.crear_recordatorio(tarea, hora_recordar, hora_seguimiento, fecha_tarea)
 
     try:
         from coach.integrations.calendar import crear_evento
-        crear_evento(tarea, hoy, hora_tarea)
+        crear_evento(tarea, fecha_tarea, hora_tarea)
     except Exception as e:
         log.warning(f"[CALENDAR] no se pudo crear el evento: {e}")
+
+    # Formatear fecha para el mensaje de confirmación si no es hoy
+    fecha_confirmacion_str = ""
+    if fecha_tarea != hoy:
+        dias = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+        meses = ["enero", "febrero", "marzo", "abril", "mayo", "junio",
+                 "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+        fecha_confirmacion_str = f"{dias[fecha_tarea.weekday()]} {fecha_tarea.day} de {meses[fecha_tarea.month - 1]}"
 
     respuesta = plantilla_confirmacion_recordatorio(
         tarea,
         hora_recordar.strftime("%H:%M"),
         hora_tarea.strftime("%H:%M"),
+        fecha_confirmacion_str
     )
     if conflicto:
         respuesta += (
-            f"\n\n⚠️ Ojo: a esa hora tenés *{conflicto['summary']}* "
+            f"\n\n⚠️ Ojo: a esa hora tienes *{conflicto['summary']}* "
             f"({conflicto['hora_inicio']}–{conflicto['hora_fin']}) en Calendar. "
-            f"Si lo movés decime."
+            f"Si lo mueves dime."
         )
 
     await m_db.guardar("assistant", respuesta, tipo="confirmacion_recordatorio")
