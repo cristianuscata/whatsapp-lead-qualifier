@@ -18,6 +18,11 @@ from coach.agent.prompts import (
     plantilla_confirmacion_recordatorio,
     plantilla_no_cumplido,
 )
+from coach.agent.state import (
+    get_pendiente_feedback,
+    clear_pendiente_feedback,
+    add_evento_calendar_cumplido,
+)
 from coach.db import mensajes as m_db
 from coach.db import recordatorios as r_db
 from whatsapp import enviar_mensaje
@@ -60,8 +65,10 @@ async def coach_handle_message(numero: str, mensaje: str) -> None:
         await _crear_y_confirmar(numero, intent)
         return
 
-    # 3. Chat libre — usamos historial PREVIO al mensaje actual
-    historial = await m_db.historial(limite=10)
+    # 3. Chat libre — usamos historial PREVIO al mensaje actual.
+    # Mantenemos 30 mensajes para que el coach pueda hilar conversaciones
+    # de los últimos días (no solo del momento).
+    historial = await m_db.historial(limite=30)
     await m_db.guardar("user", texto)
     try:
         respuesta = await responder_chat(texto, historial)
@@ -84,21 +91,53 @@ def _detectar_feedback(texto: str):
 
 
 async def _procesar_feedback(numero: str, feedback) -> None:
-    pendiente = await r_db.ultimo_pendiente_seguimiento()
-    if not pendiente:
-        respuesta = (
-            "No tengo un recordatorio abierto para asociar tu respuesta. "
-            "¿Quieres contarme qué pasó?"
-        )
-        await m_db.guardar("assistant", respuesta)
-        await enviar_mensaje(numero, respuesta)
-        return
+    """
+    Asocia el sí/no/medias al pendiente más reciente: puede ser un recordatorio
+    de DB o un evento de Calendar. Se prioriza state.json (más fresco) sobre la
+    DB; si no hay pendiente registrado se cae a la lógica antigua por compat.
+    """
+    pendiente_state = get_pendiente_feedback()
 
-    tarea = pendiente["tarea"]
-    rec_id = pendiente["id"]
+    es_calendar = pendiente_state and pendiente_state.get("tipo") == "calendar"
+    tarea: str
+    rec_id: int | None = None
+    calendar_key: str | None = None
+
+    if es_calendar:
+        tarea = pendiente_state["tarea"]
+        calendar_key = pendiente_state["ref"]
+    else:
+        # Recordatorio: usar state si está, sino la DB (back-compat)
+        rec = None
+        if pendiente_state and pendiente_state.get("tipo") == "recordatorio":
+            try:
+                rec_id = int(pendiente_state["ref"])
+                rec = {"id": rec_id, "tarea": pendiente_state["tarea"]}
+            except (ValueError, KeyError):
+                rec = None
+        if rec is None:
+            rec = await r_db.ultimo_pendiente_seguimiento()
+        if not rec:
+            respuesta = (
+                "No tengo un recordatorio abierto para asociar tu respuesta. "
+                "¿Quieres contarme qué pasó?"
+            )
+            await m_db.guardar("assistant", respuesta)
+            await enviar_mensaje(numero, respuesta)
+            return
+        tarea = rec["tarea"]
+        rec_id = rec["id"]
 
     if feedback is True:
-        await r_db.marcar_cumplido(rec_id, True)
+        if es_calendar:
+            add_evento_calendar_cumplido(calendar_key)
+            log.info(f"[CALENDAR] evento marcado cumplido en state: {tarea}")
+        else:
+            await r_db.marcar_cumplido(rec_id, True)
+            hoy = datetime.now(TZ_LIMA).date()
+            borradas = await r_db.eliminar_reprogramaciones_futuras(tarea, hoy)
+            if borradas:
+                log.info(f"[COACH] limpié {borradas} reprogramación(es) futura(s) de '{tarea}' (sí tardío)")
         instr = (
             f"Cristian acaba de confirmar que cumplió: '{tarea}'. "
             "Celebra genuinamente en máximo 4 líneas, con versículo."
@@ -114,28 +153,49 @@ async def _procesar_feedback(numero: str, feedback) -> None:
             )
 
     elif feedback is False:
-        await r_db.marcar_cumplido(rec_id, False)
-        await r_db.marcar_reprogramado(rec_id)  # ofrecemos reagendar manualmente
-        respuesta = plantilla_no_cumplido(tarea)
-
-    else:  # "medias"
-        await r_db.marcar_cumplido(rec_id, False)
-        await r_db.marcar_reprogramado(rec_id)
+        if es_calendar:
+            add_evento_calendar_cumplido(calendar_key)  # cerramos la pregunta
+        else:
+            await r_db.marcar_cumplido(rec_id, False)
+            await r_db.marcar_reprogramado(rec_id)
         instr = (
-            f"Cristian cumplió a medias con: '{tarea}'. "
-            "Confronta con amor, sin juzgar, y empuja a ejecución completa. "
-            "Máximo 4 líneas, con versículo."
+            f"Cristian acaba de decir que NO cumplió con: '{tarea}'. "
+            "Responde con calidez genuina, sin juicio y sin sermón. "
+            "1) pregúntale qué pasó (curiosidad, no reproche), "
+            "2) ofrécele reagendar (mañana misma hora u otra que te diga), "
+            "3) cierra con versículo breve. Máximo 4 líneas, tono de amigo no de jefe."
         )
         try:
             respuesta = await generar_mensaje(instr)
         except Exception as e:
-            log.error(f"[COACH] error generando confrontación: {e}")
+            log.error(f"[COACH] error generando follow-up empático: {e}")
+            respuesta = plantilla_no_cumplido(tarea)
+
+    else:  # "medias"
+        if es_calendar:
+            add_evento_calendar_cumplido(calendar_key)
+        else:
+            await r_db.marcar_cumplido(rec_id, False)
+            await r_db.marcar_reprogramado(rec_id)
+        instr = (
+            f"Cristian cumplió a medias con: '{tarea}'. "
+            "Responde con calidez: "
+            "1) reconoce lo que sí avanzó, "
+            "2) pregúntale qué le faltó / qué le trabó, "
+            "3) sugiérele un siguiente paso concreto (chico) para hoy. "
+            "Cierra con versículo. Máximo 4 líneas, tono de amigo."
+        )
+        try:
+            respuesta = await generar_mensaje(instr)
+        except Exception as e:
+            log.error(f"[COACH] error generando follow-up a medias: {e}")
             respuesta = (
-                f"A medias no cuenta como cumplido. Sin juicio, pero la verdad duele.\n"
-                f"¿Qué necesitas para terminarlo hoy?\n"
+                f"Algo es algo. ¿Qué te faltó para terminarlo?\n"
+                f"Dime un paso chico que sí puedes cerrar hoy.\n"
                 f"'No os canséis de hacer el bien' — Gál 6:9"
             )
 
+    clear_pendiente_feedback()
     await m_db.guardar("assistant", respuesta, tipo="feedback_respuesta")
     await enviar_mensaje(numero, respuesta)
 
@@ -145,6 +205,7 @@ async def _crear_y_confirmar(numero: str, intent: dict) -> None:
     fecha_tarea = intent.get("fecha") or hoy
     hora_tarea = intent["hora"]
     tarea = intent["tarea"]
+    meta_key = intent.get("meta_key")
 
     momento_tarea = datetime.combine(fecha_tarea, hora_tarea)
     hora_recordar    = (momento_tarea - timedelta(minutes=5)).time()
@@ -159,7 +220,7 @@ async def _crear_y_confirmar(numero: str, intent: dict) -> None:
     except Exception as e:
         log.warning(f"[CALENDAR] no pude verificar conflictos: {e}")
 
-    await r_db.crear_recordatorio(tarea, hora_recordar, hora_seguimiento, fecha_tarea)
+    await r_db.crear_recordatorio(tarea, hora_recordar, hora_seguimiento, fecha_tarea, meta_key=meta_key)
 
     try:
         from coach.integrations.calendar import crear_evento

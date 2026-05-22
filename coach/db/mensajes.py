@@ -43,6 +43,24 @@ async def guardar(role: str, content: str, tipo: str = "chat") -> None:
     }).execute()
 
 
+async def mensajes_recientes(dias: int = 14) -> list[dict]:
+    """
+    Devuelve TODOS los mensajes (user + assistant) de los últimos N días.
+    Usado por la revisión semanal para detectar qué metas se mencionaron poco.
+    """
+    from datetime import datetime, timedelta, timezone
+    db = await _get_cliente()
+    desde = (datetime.now(timezone.utc) - timedelta(days=dias)).isoformat()
+    resultado = await (
+        db.table("coach_mensajes")
+        .select("role, content, created_at")
+        .gte("created_at", desde)
+        .order("created_at", desc=False)
+        .execute()
+    )
+    return resultado.data or []
+
+
 async def historial(limite: int = 10) -> list[dict]:
     """Devuelve los últimos N mensajes en orden cronológico (formato OpenAI)."""
     db = await _get_cliente()

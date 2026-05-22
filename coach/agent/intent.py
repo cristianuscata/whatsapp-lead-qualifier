@@ -68,4 +68,12 @@ async def detectar_recordatorio(mensaje: str) -> dict | None:
         log.warning(f"[COACH] fecha inválida del intent: {fecha_str!r}, usando hoy")
         fecha = ahora.date()
 
-    return {"tarea": tarea, "hora": hora, "fecha": fecha}
+    meta_key = data.get("meta_key")
+    # Validar contra METAS_ACTIVAS para no aceptar valores inventados
+    from coach.agent.prompts import METAS_ACTIVAS
+    keys_validas = {m["key"] for m in METAS_ACTIVAS}
+    if meta_key and meta_key not in keys_validas:
+        log.warning(f"[COACH] meta_key inválida del intent: {meta_key!r}")
+        meta_key = None
+
+    return {"tarea": tarea, "hora": hora, "fecha": fecha, "meta_key": meta_key}

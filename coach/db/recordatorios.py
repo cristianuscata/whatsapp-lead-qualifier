@@ -12,8 +12,13 @@ Tabla esperada (ejecutar en SQL Editor de Supabase):
         avisado          boolean default false,
         cumplido         boolean default null,
         reprogramado     boolean default false,
+        meta_key         text default null,    -- 'PTE' | 'Azure' | 'Maestría' | 'MVP' | 'Visa' | 'Sydney' | null
         created_at       timestamptz default now()
     );
+
+Migración para agregar meta_key a una tabla existente:
+
+    alter table recordatorios add column if not exists meta_key text default null;
 
 Semántica de los flags:
 - avisado=false      → todavía no se envió el aviso de "5 min antes".
@@ -22,6 +27,7 @@ Semántica de los flags:
 - cumplido=true      → Cristian confirmó que cumplió.
 - cumplido=false     → respondió que no o a medias.
 - reprogramado=true  → ya se trató (no reprogramar de nuevo en el cierre del día).
+- meta_key=...       → tarea ligada a una de las metas activas (ver prompts.METAS_ACTIVAS).
 """
 
 import os
@@ -49,15 +55,42 @@ async def crear_recordatorio(
     hora_recordar: time,
     hora_seguimiento: time,
     fecha: date,
+    meta_key: str | None = None,
 ) -> dict | None:
     db = await _get_cliente()
-    resultado = await db.table("recordatorios").insert({
+    fila = {
         "tarea":            tarea,
         "hora_recordar":    hora_recordar.strftime("%H:%M:%S"),
         "hora_seguimiento": hora_seguimiento.strftime("%H:%M:%S"),
         "fecha":            fecha.isoformat(),
-    }).execute()
+    }
+    if meta_key:
+        fila["meta_key"] = meta_key
+    resultado = await db.table("recordatorios").insert(fila).execute()
     return resultado.data[0] if resultado.data else None
+
+
+async def conteo_tareas_por_meta(desde_fecha: date) -> dict[str, dict[str, int]]:
+    """
+    Devuelve {meta_key: {"total": N, "cumplidas": M}} para tareas con fecha >= desde_fecha.
+    Solo incluye tareas con meta_key no-null.
+    """
+    db = await _get_cliente()
+    resultado = await (
+        db.table("recordatorios")
+        .select("meta_key, cumplido")
+        .gte("fecha", desde_fecha.isoformat())
+        .not_.is_("meta_key", "null")
+        .execute()
+    )
+    conteo: dict[str, dict[str, int]] = {}
+    for fila in resultado.data or []:
+        key = fila["meta_key"]
+        bucket = conteo.setdefault(key, {"total": 0, "cumplidas": 0})
+        bucket["total"] += 1
+        if fila.get("cumplido") is True:
+            bucket["cumplidas"] += 1
+    return conteo
 
 
 async def pendientes_aviso(fecha: date, ahora: time) -> list[dict]:
@@ -118,6 +151,27 @@ async def tareas_del_dia(fecha: date) -> list[dict]:
         .execute()
     )
     return resultado.data or []
+
+
+async def eliminar_reprogramaciones_futuras(tarea: str, desde_fecha: date) -> int:
+    """
+    Borra recordatorios futuros de la misma tarea que aún no fueron avisados.
+    Se llama cuando Cristian confirma tarde que sí cumplió: el cierre del día
+    anterior ya creó una copia reprogramada para hoy/mañana, hay que removerla
+    para no preguntar de nuevo.
+    Devuelve la cantidad de filas borradas.
+    """
+    db = await _get_cliente()
+    resultado = await (
+        db.table("recordatorios")
+        .delete()
+        .eq("tarea", tarea)
+        .eq("avisado", False)
+        .is_("cumplido", "null")
+        .gt("fecha", desde_fecha.isoformat())
+        .execute()
+    )
+    return len(resultado.data or [])
 
 
 async def ultimo_pendiente_seguimiento() -> dict | None:

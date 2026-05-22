@@ -117,3 +117,48 @@ def remove_check_mediodia_respondido(fecha_iso: str) -> None:
     respuestas.pop(fecha_iso, None)
     state["check_mediodia_respondido"] = respuestas
     save_state(state)
+
+
+# ── Último seguimiento esperando feedback (recordatorio DB o evento Calendar) ──
+# Permite que un "sí / no / a medias" se asocie al pendiente correcto, sea
+# un recordatorio o un evento de Calendar.
+
+def set_pendiente_feedback(tipo: str, ref: str, ts_iso: str, tarea: str) -> None:
+    """tipo: 'recordatorio' (ref = id como str) | 'calendar' (ref = key del evento)."""
+    state = load_state()
+    state["pendiente_feedback"] = {
+        "tipo": tipo,
+        "ref": ref,
+        "ts": ts_iso,
+        "tarea": tarea,
+    }
+    save_state(state)
+
+
+def get_pendiente_feedback() -> dict | None:
+    return load_state().get("pendiente_feedback")
+
+
+def clear_pendiente_feedback() -> None:
+    state = load_state()
+    state.pop("pendiente_feedback", None)
+    save_state(state)
+
+
+def get_eventos_calendar_cumplidos() -> set[str]:
+    return set(load_state().get("eventos_calendar_cumplidos", []))
+
+
+def add_evento_calendar_cumplido(key: str) -> None:
+    state = load_state()
+    cumplidos = state.get("eventos_calendar_cumplidos", [])
+    if key not in cumplidos:
+        cumplidos.append(key)
+        state["eventos_calendar_cumplidos"] = cumplidos
+        save_state(state)
+
+
+def clear_eventos_calendar_cumplidos() -> None:
+    state = load_state()
+    state["eventos_calendar_cumplidos"] = []
+    save_state(state)
