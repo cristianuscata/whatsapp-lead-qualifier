@@ -30,7 +30,7 @@ Tres containers en `docker-compose.yml`:
 
 Externos:
 - **Supabase** — DB de app (tablas `recordatorios` y `coach_mensajes`).
-- **OpenAI** — GPT-4o-mini para intent detection y respuestas del coach.
+- **OpenAI** — GPT-4o-mini para intent detection y respuestas del coach. Hay un análisis abierto de migrar parte del flujo a modelos mejores (Sonnet/gpt-4o) vía OpenRouter — ver `MODELOS_LLM.md`.
 - **Google Calendar** — destino de los eventos creados por el bot (scope `calendar.events`, incluye lectura).
 
 ---
