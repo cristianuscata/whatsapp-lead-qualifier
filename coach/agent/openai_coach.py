@@ -41,7 +41,10 @@ async def responder_chat(mensaje: str, historial: list[dict]) -> str:
         f"EVENTOS EN TU GOOGLE CALENDAR HOY ({hoy.isoformat()}):\n{_fmt(eventos_hoy, hoy)}\n\n"
         f"EVENTOS EN TU GOOGLE CALENDAR MAÑANA ({manana.isoformat()}):\n{_fmt(eventos_manana, manana)}\n\n"
         "REGLA DURA: las fechas y horas de arriba son la única fuente de verdad. "
-        "NO inventes fechas ni horas, NO menciones eventos que no estén en estas listas."
+        "NO inventes fechas ni horas, NO menciones eventos que no estén en estas listas. "
+        "Si el usuario pregunta por sus eventos/calendar/agenda del día o de mañana, "
+        "DEBES listar TODOS los eventos de la lista correspondiente sin omitir ninguno, "
+        "en el mismo orden y con la hora exacta. No resumas ni agrupes."
     )
 
     # Inyectar últimos 3 resúmenes semanales para memoria de largo plazo
@@ -77,7 +80,7 @@ async def responder_chat(mensaje: str, historial: list[dict]) -> str:
     resp = await client.chat.completions.create(
         model="gpt-4o-mini",
         messages=messages,
-        temperature=0.7,
+        temperature=0.3,
     )
     return resp.choices[0].message.content.strip()
 
