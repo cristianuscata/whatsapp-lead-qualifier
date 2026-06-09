@@ -9,7 +9,12 @@ from zoneinfo import ZoneInfo
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 
-from coach.agent.prompts import get_system_intent, INTENT_SCHEMA
+from coach.agent.prompts import (
+    get_system_intent,
+    INTENT_SCHEMA,
+    SYSTEM_CALENDAR_QUERY,
+    CALENDAR_QUERY_SCHEMA,
+)
 
 load_dotenv()
 log = logging.getLogger(__name__)
@@ -77,3 +82,33 @@ async def detectar_recordatorio(mensaje: str) -> dict | None:
         meta_key = None
 
     return {"tarea": tarea, "hora": hora, "fecha": fecha, "meta_key": meta_key}
+
+
+async def detectar_consulta_calendar(mensaje: str) -> str | None:
+    """
+    Detecta si el mensaje es una consulta al calendar.
+    Devuelve "hoy", "manana", "ambos", o None si no es consulta.
+    Tolerante a fallos: ante cualquier error devuelve None y loguea.
+    """
+    try:
+        resp = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": SYSTEM_CALENDAR_QUERY},
+                {"role": "user",   "content": mensaje},
+            ],
+            response_format=CALENDAR_QUERY_SCHEMA,
+            temperature=0,
+        )
+        data = json.loads(resp.choices[0].message.content)
+    except Exception as e:
+        log.warning(f"[COACH] calendar-query detection falló: {e}")
+        return None
+
+    if not data.get("es_consulta_calendar"):
+        return None
+
+    alcance = data.get("alcance")
+    if alcance not in ("hoy", "manana", "ambos"):
+        return None
+    return alcance

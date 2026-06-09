@@ -3,8 +3,9 @@ Lógica principal del coach.
 
 Pipeline cuando llega un mensaje de Cristian:
 1. ¿Es feedback de un recordatorio pendiente (sí/no/a medias)? → procesarlo.
-2. ¿Es una nueva intención de tarea con hora?                  → crear recordatorio.
-3. Si nada de lo anterior                                       → chat libre con el coach.
+2. ¿Es consulta sobre el Calendar (hoy/mañana)?                → lista armada en código + cierre del LLM.
+3. ¿Es una nueva intención de tarea con hora?                  → crear recordatorio.
+4. Si nada de lo anterior                                       → chat libre con el coach.
 """
 
 import logging
@@ -12,7 +13,7 @@ import re
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from coach.agent.intent import detectar_recordatorio
+from coach.agent.intent import detectar_recordatorio, detectar_consulta_calendar
 from coach.agent.openai_coach import responder_chat, generar_mensaje
 from coach.agent.prompts import (
     plantilla_confirmacion_recordatorio,
@@ -58,14 +59,21 @@ async def coach_handle_message(numero: str, mensaje: str) -> None:
         await _procesar_feedback(numero, feedback)
         return
 
-    # 2. ¿Nueva intención de tarea?
+    # 2. ¿Consulta sobre eventos del Calendar? (ruta dedicada, lista armada en código)
+    alcance_cal = await detectar_consulta_calendar(texto)
+    if alcance_cal:
+        await m_db.guardar("user", texto)
+        await _responder_consulta_calendar(numero, alcance_cal)
+        return
+
+    # 3. ¿Nueva intención de tarea?
     intent = await detectar_recordatorio(texto)
     if intent:
         await m_db.guardar("user", texto)
         await _crear_y_confirmar(numero, intent)
         return
 
-    # 3. Chat libre — usamos historial PREVIO al mensaje actual.
+    # 4. Chat libre — usamos historial PREVIO al mensaje actual.
     # Mantenemos 30 mensajes para que el coach pueda hilar conversaciones
     # de los últimos días (no solo del momento).
     historial = await m_db.historial(limite=30)
@@ -250,4 +258,81 @@ async def _crear_y_confirmar(numero: str, intent: dict) -> None:
         )
 
     await m_db.guardar("assistant", respuesta, tipo="confirmacion_recordatorio")
+    await enviar_mensaje(numero, respuesta)
+
+
+_DIAS_ES = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+_MESES_ES = ["enero", "febrero", "marzo", "abril", "mayo", "junio",
+             "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+
+
+def _fecha_humana_corta(fecha) -> str:
+    return f"{_DIAS_ES[fecha.weekday()]} {fecha.day} de {_MESES_ES[fecha.month - 1]}"
+
+
+def _formatear_lista_eventos(eventos: list[dict]) -> str:
+    if not eventos:
+        return "(sin eventos programados)"
+    return "\n".join(
+        f"• {ev['hora_inicio']}–{ev['hora_fin']}: {ev['summary']}" for ev in eventos
+    )
+
+
+async def _responder_consulta_calendar(numero: str, alcance: str) -> None:
+    """
+    Responde una consulta de calendar con la lista EXACTA armada en código
+    (sin pasar por LLM) + un cierre breve del LLM (versículo + pregunta).
+    Garantiza fidelidad de la lista.
+    """
+    from coach.integrations.calendar import listar_eventos
+
+    hoy = datetime.now(TZ_LIMA).date()
+    manana = hoy + timedelta(days=1)
+
+    bloques: list[str] = []
+    resumen_para_cierre: list[str] = []
+
+    if alcance in ("hoy", "ambos"):
+        try:
+            eventos_hoy = listar_eventos(hoy)
+        except Exception as e:
+            log.warning(f"[CALENDAR] error listando eventos de hoy: {e}")
+            eventos_hoy = []
+        bloques.append(
+            f"📅 *Hoy {_fecha_humana_corta(hoy)}:*\n{_formatear_lista_eventos(eventos_hoy)}"
+        )
+        resumen_para_cierre.append(f"hoy tiene {len(eventos_hoy)} evento(s)")
+
+    if alcance in ("manana", "ambos"):
+        try:
+            eventos_manana = listar_eventos(manana)
+        except Exception as e:
+            log.warning(f"[CALENDAR] error listando eventos de mañana: {e}")
+            eventos_manana = []
+        bloques.append(
+            f"📅 *Mañana {_fecha_humana_corta(manana)}:*\n{_formatear_lista_eventos(eventos_manana)}"
+        )
+        resumen_para_cierre.append(f"mañana tiene {len(eventos_manana)} evento(s)")
+
+    lista = "\n\n".join(bloques)
+
+    # El LLM solo arma el cierre — NO toca la lista
+    instr = (
+        f"Cristian acaba de pedir su agenda de Calendar ({', '.join(resumen_para_cierre)}). "
+        "Ya le mostré la lista arriba. Genera SOLO un cierre breve (2 líneas máximo): "
+        "1) un versículo bíblico corto con referencia, "
+        "2) una pregunta concreta tipo '¿por cuál arrancas?' o '¿cómo te sientes con el día?'. "
+        "NO repitas la lista. NO menciones eventos específicos. Tono cálido."
+    )
+    try:
+        cierre = await generar_mensaje(instr)
+    except Exception as e:
+        log.error(f"[COACH] error generando cierre consulta calendar: {e}")
+        cierre = (
+            "'Todo lo puedo en Cristo que me fortalece' — Fil 4:13\n"
+            "¿Por cuál vas a arrancar?"
+        )
+
+    respuesta = f"{lista}\n\n{cierre}"
+    await m_db.guardar("assistant", respuesta, tipo="consulta_calendar")
     await enviar_mensaje(numero, respuesta)

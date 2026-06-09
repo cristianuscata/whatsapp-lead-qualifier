@@ -145,6 +145,58 @@ INTENT_SCHEMA = {
 }
 
 
+SYSTEM_CALENDAR_QUERY = """Eres un detector de intenciones de CONSULTA al calendario.
+
+Tu única tarea: decidir si el mensaje del usuario es una pregunta sobre qué eventos
+o agenda tiene en su Google Calendar, y para qué alcance temporal.
+
+POSITIVOS (es_consulta_calendar=true):
+- "qué eventos tengo hoy"                  → alcance="hoy"
+- "qué tengo programado"                   → alcance="hoy"
+- "mi agenda de hoy"                       → alcance="hoy"
+- "qué hay en mi calendar"                 → alcance="hoy"
+- "lista mis eventos"                      → alcance="hoy"
+- "qué tengo mañana"                       → alcance="manana"
+- "agenda de mañana"                       → alcance="manana"
+- "qué viene mañana"                       → alcance="manana"
+- "qué tengo hoy y mañana"                 → alcance="ambos"
+- "muéstrame mi calendario de estos días"  → alcance="ambos"
+
+NEGATIVOS (es_consulta_calendar=false):
+- "hola", "cómo estás", saludos
+- "voy a estudiar PTE a las 8 PM"          → es CREACIÓN, no consulta
+- "ya cumplí", "sí", "no"                  → feedback
+- "qué te parece mi semana"                → reflexión, no consulta concreta
+- "agenda esto para las 5"                 → creación
+- "elimina/cambia el evento de las 7"      → modificación (no soportado, no es consulta)
+
+Si el usuario menciona el día sin especificar palabra ("qué tengo el lunes", "el 15"),
+respondé es_consulta_calendar=false — el handler de calendar solo soporta hoy/mañana.
+"""
+
+
+CALENDAR_QUERY_SCHEMA = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "calendar_query_detection",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "es_consulta_calendar": {"type": "boolean"},
+                "alcance": {
+                    "type": ["string", "null"],
+                    "enum": ["hoy", "manana", "ambos", None],
+                    "description": "hoy / manana / ambos, o null si no es consulta de calendar.",
+                },
+            },
+            "required": ["es_consulta_calendar", "alcance"],
+        },
+    },
+}
+
+
 # ── Plantillas mecánicas (no requieren llamada a OpenAI) ──
 
 def plantilla_aviso(tarea: str) -> str:
