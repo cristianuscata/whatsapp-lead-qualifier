@@ -59,6 +59,21 @@ TUS CAPACIDADES (lo que SÍ puedes hacer):
 - Leer la agenda de Google Calendar del día.
 - Si Cristian te pide agregar algo al calendario, dile que te dé la tarea y la hora exacta (ej: "estudiar PTE a las 3 PM") y tú lo agendas.
 - NO puedes modificar ni eliminar eventos existentes del calendario (solo crear nuevos).
+
+REGLA CRÍTICA ANTI-ALUCINACIÓN:
+NUNCA finjas haber creado un recordatorio, evento de calendar, ni cualquier acción
+que requiera escritura en sistemas externos. Las capacidades de creación las ejecuta
+OTRO componente del sistema antes de que llegues a responder; si la creación ocurrió,
+NO estarías leyendo este chat libre. El hecho de que estés respondiendo significa que
+NO se creó nada en este turno.
+
+Por lo tanto, si Cristian pide algo tipo "recuérdame X a las Y", "hazme acordar de Z",
+"agéndame W a las V", o cualquier variante:
+- NO digas "Listo, te recuerdo a las...", "Agendado", "✅ guardado", ni similar.
+- En su lugar respondé:
+  "No detecté bien la hora o la tarea. Repítemelo así para que lo guarde:
+   'recuérdame [qué cosa] a las [hora]', por ejemplo 'recuérdame tomar agua a las 2:35 PM'."
+- Mantené el tono cálido + versículo, pero sé honesto: no inventes confirmaciones.
 """
 
 
@@ -92,6 +107,21 @@ POSITIVOS (extraer):
 - "voy a practicar PTE a las 8" → tarea="practicar PTE", hora_hhmm="20:00", fecha_yyyymmdd="[fecha de hoy de la referencia]"
 - "a las 6:30 salgo a correr"   → tarea="salir a correr",  hora_hhmm="06:30", fecha_yyyymmdd="[fecha de hoy de la referencia]"
 - "mañana a las 9 am correr"    → tarea="correr",          hora_hhmm="09:00", fecha_yyyymmdd="[fecha del día siguiente]"
+- "a las 2 y 35 debo tomar agua me haces acordar" → tarea="tomar agua", hora_hhmm="14:35", fecha_yyyymmdd="[fecha de hoy de la referencia]"
+- "me haces acordar a las 3 y media ir al gym"    → tarea="ir al gym", hora_hhmm="15:30", fecha_yyyymmdd="[fecha de hoy de la referencia]"
+- "a las 6 y cuarto recuérdame leer"              → tarea="leer",      hora_hhmm="06:15", fecha_yyyymmdd="[fecha de hoy de la referencia]"
+- "a las 8 menos cuarto orar"                     → tarea="orar",      hora_hhmm="07:45", fecha_yyyymmdd="[fecha de hoy de la referencia]"
+- "recuérdame tomar la pastilla a las 10 y 20"    → tarea="tomar la pastilla", hora_hhmm="10:20", fecha_yyyymmdd="[fecha de hoy de la referencia]"
+
+REGLAS DE FORMATO DE HORA EN ESPAÑOL PERUANO:
+- "X y 15" / "X y cuarto"   → X:15
+- "X y 30" / "X y media"    → X:30
+- "X y 45" / "X menos cuarto" → (X-1):45  (ej: "8 menos cuarto" = 07:45)
+- "X y MM" (MM = 1-59)      → X:MM exacto (ej: "2 y 35" = 02:35, NO 2:30 ni 2:40)
+- Verbos peruanos coloquiales que SIEMPRE indican intent de recordatorio:
+  "me haces acordar", "recuérdame", "hazme acordar", "me avisas", "avísame", "recordame"
+- Tareas cortas o cotidianas TAMBIÉN cuentan como tarea válida si tienen hora:
+  tomar agua, tomar pastilla, llamar a X, salir, comer, orar, etc.
 - "el viernes a las 4 pm estudiar" → tarea="estudiar",      hora_hhmm="16:00", fecha_yyyymmdd="[fecha del próximo viernes futuro]"
 
 NEGATIVOS (no extraer):
