@@ -12,7 +12,7 @@ Tabla esperada (ejecutar en SQL Editor de Supabase):
         avisado          boolean default false,
         cumplido         boolean default null,
         reprogramado     boolean default false,
-        meta_key         text default null,    -- 'PTE' | 'Azure' | 'Maestría' | 'MVP' | 'Visa' | 'Sydney' | null
+        meta_key         text default null,    -- 'Networking' | 'BienesRaices' | 'Tecnologia' | 'Azure' | 'Maestría' | 'MVP' | null
         created_at       timestamptz default now()
     );
 

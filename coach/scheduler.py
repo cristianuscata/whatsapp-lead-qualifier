@@ -531,7 +531,7 @@ async def _resumen_semanal() -> None:
             f"Resume la conversación con Cristian del {desde.isoformat()} al {hoy.isoformat()}.\n\n"
             f"TRANSCRIPCIÓN:\n{transcripcion}\n\n"
             "Genera un resumen EN BULLETS (5 a 10 puntos) capturando: "
-            "1) qué metas tocó y cómo le fue (PTE, Azure, Maestría, MVP, Visa, Sydney), "
+            "1) qué metas tocó y cómo le fue (Networking, BienesRaices, Tecnología, Azure, Maestría, MVP), "
             "2) bloqueos o frustraciones que mencionó, "
             "3) compromisos concretos que tomó, "
             "4) cualquier tema personal o emocional relevante. "

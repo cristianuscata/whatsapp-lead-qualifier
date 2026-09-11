@@ -6,12 +6,12 @@ from zoneinfo import ZoneInfo
 # Single source of truth de las metas. Se inyectan en SYSTEM_COACH y las usa
 # la revisión semanal para elegir 1-2 metas a interrogar cada domingo.
 METAS_ACTIVAS = [
-    {"key": "PTE",      "descripcion": "PTE Academic: próximo examen pendiente de agendar."},
-    {"key": "Azure",    "descripcion": "Certificación Azure AI-102: en proceso (objetivo julio 2026)."},
-    {"key": "Maestría", "descripcion": "Maestría UNAC: sustentar en diciembre 2026."},
-    {"key": "MVP",      "descripcion": "Agente WhatsApp MVP: en producción."},
-    {"key": "Visa",     "descripcion": "Visa Australia: lodge diciembre 2026."},
-    {"key": "Sydney",   "descripcion": "Meta final: AI Architect en Sydney 2027."},
+    {"key": "Networking",   "descripcion": "Networking estratégico: construir y activar contactos de alto valor."},
+    {"key": "BienesRaices", "descripcion": "Inversiones en bienes raíces: asistir a eventos y evaluar oportunidades."},
+    {"key": "Tecnologia",   "descripcion": "Tecnología: mantenerse a la vanguardia y capitalizarla."},
+    {"key": "Azure",        "descripcion": "Certificación Azure AI-102: en proceso (objetivo julio 2026)."},
+    {"key": "Maestría",     "descripcion": "Maestría UNAC: sustentar en diciembre 2026."},
+    {"key": "MVP",          "descripcion": "Agente WhatsApp MVP: en producción."},
 ]
 
 _METAS_TEXT = "\n".join(f"- {m['descripcion']}" for m in METAS_ACTIVAS)
@@ -51,13 +51,13 @@ REGLAS DEL COACH:
 - Pregunta cómo SE SIENTE, no solo qué hizo. La ejecución viene del estado interno.
 - Recuérdale que MINCETUR es temporal, pero sin meterlo en cada mensaje.
 - Nunca respuestas genéricas tipo "tú puedes", "dale con todo", "vamos por más".
-- Habla de sus metas específicas con sus nombres (PTE, Azure, UNAC, Sydney), no de "tus metas".
+- Habla de sus metas específicas con sus nombres (Networking, BienesRaices, Tecnología, Azure, Maestría, MVP), no de "tus metas".
 - Tutéalo (peruano informal): tú, contigo, ¿cómo estás?, no usar "ustedes" ni "vosotros".
 
 TUS CAPACIDADES (lo que SÍ puedes hacer):
 - Crear recordatorios con hora → se guardan en la DB y se agendan en Google Calendar automáticamente.
 - Leer la agenda de Google Calendar del día.
-- Si Cristian te pide agregar algo al calendario, dile que te dé la tarea y la hora exacta (ej: "estudiar PTE a las 3 PM") y tú lo agendas.
+- Si Cristian te pide agregar algo al calendario, dile que te dé la tarea y la hora exacta (ej: "evento de networking a las 3 PM") y tú lo agendas.
 - NO puedes modificar ni eliminar eventos existentes del calendario (solo crear nuevos).
 
 REGLA CRÍTICA ANTI-ALUCINACIÓN:
@@ -94,17 +94,18 @@ claramente ligada a una de las metas activas, devuelve también `meta_key` (uno 
 {keys_validas}). Si no calza con ninguna, deja meta_key=null.
 
 EJEMPLOS DE meta_key:
-- "estudiar PTE a las 3 PM"         → meta_key="PTE"
+- "evento de networking a las 7"    → meta_key="Networking"
+- "ver una propiedad a las 4"       → meta_key="BienesRaices"
+- "leer sobre IA a las 9"           → meta_key="Tecnologia"
 - "leer material de Azure 7 PM"     → meta_key="Azure"
 - "trabajar en la tesis a las 8"    → meta_key="Maestría"
 - "avanzar el MVP a las 10"         → meta_key="MVP"
-- "papeles de visa a las 6"         → meta_key="Visa"
 - "ir al gimnasio a las 7"          → meta_key=null (no es meta activa)
 - "comprar pan a las 5"             → meta_key=null
 
 POSITIVOS (extraer):
 - "estudiaré verbos a las 3 PM" → tarea="estudiar verbos", hora_hhmm="15:00", fecha_yyyymmdd="[fecha de hoy de la referencia]"
-- "voy a practicar PTE a las 8" → tarea="practicar PTE", hora_hhmm="20:00", fecha_yyyymmdd="[fecha de hoy de la referencia]"
+- "voy a un evento de networking a las 8" → tarea="ir a evento de networking", hora_hhmm="20:00", fecha_yyyymmdd="[fecha de hoy de la referencia]"
 - "a las 6:30 salgo a correr"   → tarea="salir a correr",  hora_hhmm="06:30", fecha_yyyymmdd="[fecha de hoy de la referencia]"
 - "mañana a las 9 am correr"    → tarea="correr",          hora_hhmm="09:00", fecha_yyyymmdd="[fecha del día siguiente]"
 - "a las 2 y 35 debo tomar agua me haces acordar" → tarea="tomar agua", hora_hhmm="14:35", fecha_yyyymmdd="[fecha de hoy de la referencia]"
@@ -194,7 +195,7 @@ POSITIVOS (es_consulta_calendar=true):
 
 NEGATIVOS (es_consulta_calendar=false):
 - "hola", "cómo estás", saludos
-- "voy a estudiar PTE a las 8 PM"          → es CREACIÓN, no consulta
+- "voy a un evento a las 8 PM"          → es CREACIÓN, no consulta
 - "ya cumplí", "sí", "no"                  → feedback
 - "qué te parece mi semana"                → reflexión, no consulta concreta
 - "agenda esto para las 5"                 → creación
