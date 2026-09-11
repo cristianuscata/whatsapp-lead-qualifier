@@ -93,7 +93,7 @@ Calendar).
 > `fastmcp`/`mcp` en un entorno ya usado deja imports rotos (ver §5).
 
 ```powershell
-cd "C:\dev\Cursos IA\bsgi\sessionFinal\session6\mvp_coach_whatsapp"
+cd mvp-alto-rendimiento   # (en el repo; en local: session6/mvp_coach_whatsapp)
 
 python -m venv .venv
 .venv\Scripts\Activate.ps1
