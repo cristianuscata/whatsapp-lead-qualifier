@@ -8,3 +8,11 @@ apscheduler
 tzdata
 google-auth-oauthlib
 google-api-python-client
+
+# Coach de alto rendimiento — agente MCP (chat libre con USE_MCP_AGENT=true).
+# Versiones fijadas a un set verificado; Docker construye en entorno limpio.
+langchain==1.4.0
+langchain-openai
+langchain-mcp-adapters==0.3.1
+fastmcp==2.13.1
+mcp==1.30.0

@@ -7,9 +7,23 @@ services:
       - "8000:8000"
     env_file:
       - .env
+    environment:
+      # URL interna del servidor MCP (mismo network de compose).
+      - MCP_URL=http://mcp:8002/
+      # Activa el coach de alto rendimiento (agente MCP) en el chat libre.
+      # Ponlo en true en .env para activarlo; false = comportamiento v1.
+      - USE_MCP_AGENT=${USE_MCP_AGENT:-false}
     volumes:
       - ./google:/app/google
     command: uvicorn main:app --host 0.0.0.0 --port 8000
+
+  # Servidor MCP del coach (tools de solo lectura sobre Supabase). Interno: SIN puerto público.
+  mcp:
+    build: .
+    restart: always
+    env_file:
+      - .env
+    command: uvicorn coach.mcp.mcp_app:app --host 0.0.0.0 --port 8002
 
   # EvolutionAPI v2 (WhatsApp gateway)
   evolution:

@@ -192,3 +192,31 @@ async def ultimo_pendiente_seguimiento() -> dict | None:
     )
     filas = resultado.data or []
     return filas[0] if filas else None
+
+
+async def consultar_por_estado(estado: str = "", limite: int = 30) -> list[dict]:
+    """Recordatorios por estado derivado (SOLO LECTURA), para el agente MCP.
+
+    - pendiente: cumplido is null y fecha >= hoy
+    - cumplido:  cumplido = true
+    - vencido:   cumplido is null y fecha < hoy
+    - (vacío):   fecha >= hoy (agenda vigente)
+    Devuelve hasta `limite` filas, más recientes primero. `hoy` en zona Lima.
+    """
+    from datetime import datetime as _dt
+    from zoneinfo import ZoneInfo
+    hoy = _dt.now(ZoneInfo("America/Lima")).date().isoformat()
+
+    db = await _get_cliente()
+    q = db.table("recordatorios").select("*")
+    estado = (estado or "").strip().lower()
+    if estado == "cumplido":
+        q = q.eq("cumplido", True)
+    elif estado == "pendiente":
+        q = q.is_("cumplido", "null").gte("fecha", hoy)
+    elif estado == "vencido":
+        q = q.is_("cumplido", "null").lt("fecha", hoy)
+    else:
+        q = q.gte("fecha", hoy)
+    resultado = await q.order("fecha", desc=True).limit(limite).execute()
+    return resultado.data or []

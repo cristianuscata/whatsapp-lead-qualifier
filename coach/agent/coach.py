@@ -9,6 +9,7 @@ Pipeline cuando llega un mensaje de Cristian:
 """
 
 import logging
+import os
 import re
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -79,7 +80,13 @@ async def coach_handle_message(numero: str, mensaje: str) -> None:
     historial = await m_db.historial(limite=30)
     await m_db.guardar("user", texto)
     try:
-        respuesta = await responder_chat(texto, historial)
+        if os.getenv("USE_MCP_AGENT", "false").lower() == "true":
+            # Coach de alto rendimiento: agente que descubre tools por MCP.
+            from coach.agent.agente_mcp import responder_agente
+            respuesta = await responder_agente(texto, historial)
+        else:
+            # Comportamiento v1: chat libre con contexto inyectado en el prompt.
+            respuesta = await responder_chat(texto, historial)
     except Exception as e:
         log.error(f"[COACH] error generando respuesta: {e}")
         respuesta = "Estoy teniendo un problema momentáneo. Vuelve a escribirme en un minuto."
