@@ -32,8 +32,8 @@ async def consultar_metas(meta: str = "") -> dict:
     """Consulta el avance de las metas de largo plazo del usuario.
 
     Úsala cuando pregunte cómo va con una meta o quiera un panorama de todas
-    (ej: "¿cómo voy con PTE?", "¿qué metas tengo?"). Si `meta` viene vacía,
-    devuelve todas; si trae una clave (PTE, Azure, Maestría, MVP, Visa, Sydney)
+    (ej: "¿cómo voy con Networking?", "¿qué metas tengo?"). Si `meta` viene vacía,
+    devuelve todas; si trae una clave (Networking, BienesRaices, Tecnologia, Azure, Maestría, MVP)
     o parte de su descripción, devuelve esa. El avance sale de las tareas reales
     registradas en los últimos 90 días. Es de SOLO LECTURA.
     """

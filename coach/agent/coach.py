@@ -163,7 +163,7 @@ async def _procesar_feedback(numero: str, feedback) -> None:
             log.error(f"[COACH] error generando celebración: {e}")
             respuesta = (
                 f"🔥 Así se hace: {tarea}.\n"
-                f"Cada paso te acerca a Sydney.\n"
+                f"Cada paso te acerca a tus metas.\n"
                 f"'Todo lo puedo en Cristo que me fortalece' — Fil 4:13"
             )
 
