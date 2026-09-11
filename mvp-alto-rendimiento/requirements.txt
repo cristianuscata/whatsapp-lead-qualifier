@@ -1,0 +1,15 @@
+# Stack del MVP (guía "Del PoC al MVP").
+#
+# Versiones FIJADAS a un set verificado (2026-09-10) en el que el servidor
+# FastMCP y el cliente langchain-mcp-adapters co-existen. IMPORTANTE: instala
+# en un entorno LIMPIO (python -m venv .venv) — mezclar versiones de fastmcp/mcp
+# en un entorno ya usado deja imports rotos. Con estos pines: server + agente
+# + tools verificados de punta a punta.
+fastapi
+uvicorn[standard]
+fastmcp==2.13.1
+mcp==1.30.0
+langchain
+langchain-openai
+langchain-mcp-adapters==0.3.1
+python-dotenv

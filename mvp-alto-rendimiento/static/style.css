@@ -1,0 +1,32 @@
+body {
+  max-width: 720px;
+  margin: 40px auto;
+  padding: 0 20px;
+  font-family: system-ui, sans-serif;
+  color: #1b2a4a;
+}
+h1 { font-size: 1.4rem; }
+.aviso { color: #666; font-size: 0.9rem; margin-bottom: 20px; }
+#historial {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 200px;
+  margin-bottom: 16px;
+}
+.mensaje { padding: 10px 14px; border-radius: 10px; max-width: 80%; white-space: pre-wrap; }
+.mensaje.usuario { align-self: flex-end; background: #1f7a72; color: white; }
+.mensaje.agente { align-self: flex-start; background: #f2f2f2; }
+.mensaje.cargando { align-self: flex-start; background: #fbf3de; font-style: italic; }
+.mensaje.error { align-self: flex-start; background: #fbeaea; color: #aa3b2e; }
+form { display: flex; gap: 8px; }
+input { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 8px; }
+button {
+  padding: 10px 16px;
+  border: none;
+  border-radius: 8px;
+  background: #1b2a4a;
+  color: white;
+  cursor: pointer;
+}
+button:hover { background: #26375e; }
