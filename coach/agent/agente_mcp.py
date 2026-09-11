@@ -13,7 +13,8 @@ from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
-from coach.agent.prompts import SYSTEM_COACH_AR
+from coach.agent.prompts import build_system_coach_ar
+from coach.db.metas import obtener_metas, metas_text
 
 MCP_URL = os.getenv("MCP_URL", "http://mcp:8002/")
 
@@ -44,7 +45,9 @@ async def responder_agente(mensaje: str, historial: list[dict]) -> str:
     Devuelve el texto final del asistente (mismo contrato que responder_chat).
     """
     tools = await _get_tools()
-    agente = create_agent(model=llm, tools=tools, system_prompt=SYSTEM_COACH_AR)
+    metas = await obtener_metas()
+    system_prompt = build_system_coach_ar(metas_text(metas))
+    agente = create_agent(model=llm, tools=tools, system_prompt=system_prompt)
     mensajes = list(historial) + [{"role": "user", "content": mensaje}]
     resultado = await agente.ainvoke({"messages": mensajes})
     return resultado["messages"][-1].content

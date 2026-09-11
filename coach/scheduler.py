@@ -27,11 +27,11 @@ from dotenv import load_dotenv
 
 from coach.agent.openai_coach import generar_mensaje
 from coach.agent.prompts import (
-    METAS_ACTIVAS,
     plantilla_aviso,
     plantilla_pregunta_seguimiento,
     plantilla_recordatorio_12_30,
 )
+from coach.db.metas import obtener_metas
 from coach.agent.state import (
     get_seguimientos_preguntados,
     add_seguimiento_preguntado,
@@ -394,19 +394,20 @@ async def _cierre_dia() -> None:
 
 
 def _ranking_metas_descuidadas(
+    metas: list[dict],
     mensajes: list[dict],
     conteo_tareas: dict[str, dict[str, int]] | None = None,
 ) -> list[dict]:
     """
-    Ordena METAS_ACTIVAS de la menos atendida a la más. Score combinado:
+    Ordena las metas de la menos atendida a la más. Score combinado:
     - menciones en chat (peso 1)
     - + tareas cumplidas en últimas 2 semanas (peso 3 — ejecutar > hablar)
-    Empate → orden estable de METAS_ACTIVAS.
+    Empate → orden estable de la lista de metas.
     """
     conteo_tareas = conteo_tareas or {}
     texto_total = " ".join(m.get("content", "") for m in mensajes).lower()
     conteos = []
-    for meta in METAS_ACTIVAS:
+    for meta in metas:
         menciones = texto_total.count(meta["key"].lower())
         cumplidas = conteo_tareas.get(meta["key"], {}).get("cumplidas", 0)
         score = menciones + cumplidas * 3
@@ -465,7 +466,8 @@ async def _revision_semanal_metas() -> None:
             conteo_tareas = await r_db.conteo_tareas_por_meta(desde)
         except Exception as e:
             log.warning(f"[COACH] no se pudo obtener conteo por meta: {e}")
-        ranking = _ranking_metas_descuidadas(mensajes, conteo_tareas)
+        metas_activas = await obtener_metas()
+        ranking = _ranking_metas_descuidadas(metas_activas, mensajes, conteo_tareas)
         n = min(2, len(ranking))
         metas = ranking[:n]
 
@@ -527,11 +529,13 @@ async def _resumen_semanal() -> None:
             f"{m.get('role','?')}: {m.get('content','')[:300]}" for m in mensajes
         )
 
+        nombres_metas = ", ".join(m["key"] for m in await obtener_metas())
+
         instr = (
             f"Resume la conversación con Cristian del {desde.isoformat()} al {hoy.isoformat()}.\n\n"
             f"TRANSCRIPCIÓN:\n{transcripcion}\n\n"
             "Genera un resumen EN BULLETS (5 a 10 puntos) capturando: "
-            "1) qué metas tocó y cómo le fue (Networking, BienesRaices, Tecnología, Azure, Maestría, MVP), "
+            f"1) qué metas tocó y cómo le fue ({nombres_metas}), "
             "2) bloqueos o frustraciones que mencionó, "
             "3) compromisos concretos que tomó, "
             "4) cualquier tema personal o emocional relevante. "

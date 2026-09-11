@@ -15,6 +15,7 @@ from coach.agent.prompts import (
     SYSTEM_CALENDAR_QUERY,
     CALENDAR_QUERY_SCHEMA,
 )
+from coach.db.metas import obtener_metas
 
 load_dotenv()
 log = logging.getLogger(__name__)
@@ -34,7 +35,8 @@ async def detectar_recordatorio(mensaje: str) -> dict | None:
         fecha_ref_str = (f"{dias[ahora.weekday()]} {ahora.day} de {meses[ahora.month - 1]} "
                          f"de {ahora.year}, {ahora.strftime('%H:%M')} (Lima, Perú)")
 
-        system_prompt = get_system_intent(fecha_ref_str)
+        metas = await obtener_metas()
+        system_prompt = get_system_intent(fecha_ref_str, metas)
 
         resp = await client.chat.completions.create(
             model="gpt-4o-mini",
@@ -74,9 +76,8 @@ async def detectar_recordatorio(mensaje: str) -> dict | None:
         fecha = ahora.date()
 
     meta_key = data.get("meta_key")
-    # Validar contra METAS_ACTIVAS para no aceptar valores inventados
-    from coach.agent.prompts import METAS_ACTIVAS
-    keys_validas = {m["key"] for m in METAS_ACTIVAS}
+    # Validar contra las metas vigentes (tabla) para no aceptar valores inventados
+    keys_validas = {m["key"] for m in metas}
     if meta_key and meta_key not in keys_validas:
         log.warning(f"[COACH] meta_key inválida del intent: {meta_key!r}")
         meta_key = None

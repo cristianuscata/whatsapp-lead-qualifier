@@ -19,8 +19,8 @@ from zoneinfo import ZoneInfo
 
 from fastmcp import FastMCP
 
-from coach.agent.prompts import METAS_ACTIVAS
 from coach.db import recordatorios as r_db
+from coach.db import metas as metas_db
 
 mcp = FastMCP("Coach de alto rendimiento — metas y recordatorios")
 
@@ -40,12 +40,13 @@ async def consultar_metas(meta: str = "") -> dict:
     hoy = date.today()
     try:
         conteo = await r_db.conteo_tareas_por_meta(hoy - timedelta(days=90))
+        metas = await metas_db.obtener_metas()
     except Exception as e:
-        return {"ok": False, "error": f"No se pudo leer el avance de tareas: {e}"}
+        return {"ok": False, "error": f"No se pudo leer metas o avance: {e}"}
 
     filtro = (meta or "").strip().lower()
     filas = []
-    for m in METAS_ACTIVAS:
+    for m in metas:
         if filtro and filtro != m["key"].lower() and filtro not in m["descripcion"].lower():
             continue
         b = conteo.get(m["key"], {"total": 0, "cumplidas": 0})

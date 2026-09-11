@@ -19,10 +19,14 @@ _METAS_TEXT = "\n".join(f"- {m['descripcion']}" for m in METAS_ACTIVAS)
 
 # System prompt del agente MCP (coach de alto rendimiento). Se usa en el chat
 # libre cuando USE_MCP_AGENT=true; el agente descubre sus tools por MCP.
-SYSTEM_COACH_AR = f"""
+# `metas_texto` permite inyectar las metas frescas desde la tabla; por defecto
+# usa la constante METAS_ACTIVAS (fallback).
+def build_system_coach_ar(metas_texto: str | None = None) -> str:
+    _metas = metas_texto if metas_texto is not None else _METAS_TEXT
+    return f"""
 Eres el coach de alto rendimiento de Cristian Uscata García, un único usuario que
-persigue seis metas de largo plazo:
-{_METAS_TEXT}
+persigue sus metas de largo plazo:
+{_metas}
 
 Tu misión: ayudarlo a rendir al máximo con foco, honestidad y accountability,
 apoyándote SIEMPRE en datos verificados por tus herramientas.
@@ -49,6 +53,10 @@ Puedes cerrar con un versículo bíblico breve si viene al caso, pero no es obli
 """.strip()
 
 
+# Constante por defecto (fallback), construida con las metas de la constante.
+SYSTEM_COACH_AR = build_system_coach_ar()
+
+
 def _fecha_hoy() -> str:
     """Fecha y hora actual en Lima para inyectar en el system prompt."""
     ahora = datetime.now(ZoneInfo("America/Lima"))
@@ -59,8 +67,10 @@ def _fecha_hoy() -> str:
             f"de {ahora.year}, {ahora.strftime('%H:%M')} (Lima, Perú)")
 
 
-def get_system_coach() -> str:
-    """System prompt dinámico con fecha actual."""
+def get_system_coach(metas_texto: str | None = None) -> str:
+    """System prompt dinámico. `metas_texto` inyecta las metas frescas desde la
+    tabla; por defecto usa la constante (fallback)."""
+    _metas = metas_texto if metas_texto is not None else _METAS_TEXT
     return f"""Eres el coach personal de Cristian Uscata García.
 
 FECHA Y HORA ACTUAL: {_fecha_hoy()}
@@ -71,7 +81,7 @@ CONTEXTO DE CRISTIAN:
 - Ambiente laboral sin ambición que lo afecta. Necesita accountability externo para ejecutar.
 
 METAS ACTIVAS:
-{_METAS_TEXT}
+{_metas}
 
 REGLAS DEL COACH:
 - Máximo 4 líneas por mensaje en el chat libre (esto es WhatsApp). Si se te pide un resumen o reporte detallado, puedes extenderte hasta 8 líneas.
@@ -109,10 +119,12 @@ Por lo tanto, si Cristian pide algo tipo "recuérdame X a las Y", "hazme acordar
 """
 
 
-def get_system_intent(fecha_ref: str) -> str:
-    """Detector de intenciones con fecha y hora de referencia."""
-    metas_listado = "\n".join(f"- {m['key']}: {m['descripcion']}" for m in METAS_ACTIVAS)
-    keys_validas = ", ".join(m["key"] for m in METAS_ACTIVAS)
+def get_system_intent(fecha_ref: str, metas: list[dict] | None = None) -> str:
+    """Detector de intenciones con fecha y hora de referencia. `metas` inyecta las
+    metas frescas desde la tabla; por defecto usa la constante (fallback)."""
+    metas = metas if metas is not None else METAS_ACTIVAS
+    metas_listado = "\n".join(f"- {m['key']}: {m['descripcion']}" for m in metas)
+    keys_validas = ", ".join(m["key"] for m in metas)
     return f"""Eres un detector de intenciones para un coach personal.
 
 FECHA Y HORA DE REFERENCIA: {fecha_ref}

@@ -162,3 +162,28 @@ def clear_eventos_calendar_cumplidos() -> None:
     state = load_state()
     state["eventos_calendar_cumplidos"] = []
     save_state(state)
+
+
+# ── Confirmación pendiente de una gestión de meta (agregar/pausar/etc.) ──
+# El coach guarda aquí la acción propuesta y espera un "sí/no" antes de escribir.
+
+def set_pendiente_meta(accion: str, key: str | None, descripcion: str | None,
+                       key_nueva: str | None = None) -> None:
+    state = load_state()
+    state["pendiente_meta"] = {
+        "accion": accion,
+        "key": key,
+        "descripcion": descripcion,
+        "key_nueva": key_nueva,
+    }
+    save_state(state)
+
+
+def get_pendiente_meta() -> dict | None:
+    return load_state().get("pendiente_meta")
+
+
+def clear_pendiente_meta() -> None:
+    state = load_state()
+    state.pop("pendiente_meta", None)
+    save_state(state)
