@@ -1,5 +1,8 @@
 # Contexto de proyecto — MVP Coach de alto rendimiento
 
+> 📌 **Agente nuevo: lee primero `HANDOFF.md`** — tiene todo el contexto del
+> proyecto y cómo probar el MVP paso a paso. Este archivo es solo el resumen.
+
 ## Producto
 Equipo: Cristian Uscata (individual). MVP para un único usuario que da
 accountability sobre sus metas de largo plazo y recordatorios. Continúa el
