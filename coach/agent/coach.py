@@ -2,10 +2,11 @@
 Lógica principal del coach.
 
 Pipeline cuando llega un mensaje de Cristian:
-1. ¿Es feedback de un recordatorio pendiente (sí/no/a medias)? → procesarlo.
-2. ¿Es consulta sobre el Calendar (hoy/mañana)?                → lista armada en código + cierre del LLM.
-3. ¿Es una nueva intención de tarea con hora?                  → crear recordatorio.
-4. Si nada de lo anterior                                       → chat libre con el coach.
+1. ¿Hay una gestión de meta esperando confirmación (sí/no)?    → aplicarla o cancelar.
+2. ¿Es feedback de un recordatorio pendiente (sí/no/a medias)? → procesarlo.
+3. ¿Es una gestión de meta (agregar/pausar/listar)?           → confirmar y escribir.
+4. ¿Es una nueva intención de tarea con hora?                  → crear recordatorio.
+5. Si nada de lo anterior                                       → chat libre con el coach.
 """
 
 import logging
@@ -14,7 +15,7 @@ import re
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from coach.agent.intent import detectar_recordatorio, detectar_consulta_calendar
+from coach.agent.intent import detectar_recordatorio
 from coach.agent.meta_intent import detectar_gestion_meta
 from coach.agent.openai_coach import responder_chat, generar_mensaje
 from coach.agent.prompts import (
@@ -24,7 +25,6 @@ from coach.agent.prompts import (
 from coach.agent.state import (
     get_pendiente_feedback,
     clear_pendiente_feedback,
-    add_evento_calendar_cumplido,
     get_pendiente_meta,
     set_pendiente_meta,
     clear_pendiente_meta,
@@ -79,14 +79,7 @@ async def coach_handle_message(numero: str, mensaje: str) -> None:
         await _procesar_feedback(numero, feedback)
         return
 
-    # 2. ¿Consulta sobre eventos del Calendar? (ruta dedicada, lista armada en código)
-    alcance_cal = await detectar_consulta_calendar(texto)
-    if alcance_cal:
-        await m_db.guardar("user", texto)
-        await _responder_consulta_calendar(numero, alcance_cal)
-        return
-
-    # 2.5 ¿Gestión de una meta (agregar / pausar / abandonar / listar)?
+    # 2. ¿Gestión de una meta (agregar / pausar / abandonar / listar)?
     metas_actuales = await obtener_metas()
     gestion = await detectar_gestion_meta(texto, [m["key"] for m in metas_actuales])
     if gestion:
@@ -134,52 +127,38 @@ def _detectar_feedback(texto: str):
 
 async def _procesar_feedback(numero: str, feedback) -> None:
     """
-    Asocia el sí/no/medias al pendiente más reciente: puede ser un recordatorio
-    de DB o un evento de Calendar. Se prioriza state.json (más fresco) sobre la
-    DB; si no hay pendiente registrado se cae a la lógica antigua por compat.
+    Asocia el sí/no/medias al recordatorio pendiente más reciente. Se prioriza
+    state.json (más fresco) sobre la DB.
     """
     pendiente_state = get_pendiente_feedback()
 
-    es_calendar = pendiente_state and pendiente_state.get("tipo") == "calendar"
-    tarea: str
+    rec = None
     rec_id: int | None = None
-    calendar_key: str | None = None
-
-    if es_calendar:
-        tarea = pendiente_state["tarea"]
-        calendar_key = pendiente_state["ref"]
-    else:
-        # Recordatorio: usar state si está, sino la DB (back-compat)
-        rec = None
-        if pendiente_state and pendiente_state.get("tipo") == "recordatorio":
-            try:
-                rec_id = int(pendiente_state["ref"])
-                rec = {"id": rec_id, "tarea": pendiente_state["tarea"]}
-            except (ValueError, KeyError):
-                rec = None
-        if rec is None:
-            rec = await r_db.ultimo_pendiente_seguimiento()
-        if not rec:
-            respuesta = (
-                "No tengo un recordatorio abierto para asociar tu respuesta. "
-                "¿Quieres contarme qué pasó?"
-            )
-            await m_db.guardar("assistant", respuesta)
-            await enviar_mensaje(numero, respuesta)
-            return
-        tarea = rec["tarea"]
-        rec_id = rec["id"]
+    if pendiente_state and pendiente_state.get("tipo") == "recordatorio":
+        try:
+            rec_id = int(pendiente_state["ref"])
+            rec = {"id": rec_id, "tarea": pendiente_state["tarea"]}
+        except (ValueError, KeyError):
+            rec = None
+    if rec is None:
+        rec = await r_db.ultimo_pendiente_seguimiento()
+    if not rec:
+        respuesta = (
+            "No tengo un recordatorio abierto para asociar tu respuesta. "
+            "¿Quieres contarme qué pasó?"
+        )
+        await m_db.guardar("assistant", respuesta)
+        await enviar_mensaje(numero, respuesta)
+        return
+    tarea = rec["tarea"]
+    rec_id = rec["id"]
 
     if feedback is True:
-        if es_calendar:
-            add_evento_calendar_cumplido(calendar_key)
-            log.info(f"[CALENDAR] evento marcado cumplido en state: {tarea}")
-        else:
-            await r_db.marcar_cumplido(rec_id, True)
-            hoy = datetime.now(TZ_LIMA).date()
-            borradas = await r_db.eliminar_reprogramaciones_futuras(tarea, hoy)
-            if borradas:
-                log.info(f"[COACH] limpié {borradas} reprogramación(es) futura(s) de '{tarea}' (sí tardío)")
+        await r_db.marcar_cumplido(rec_id, True)
+        hoy = datetime.now(TZ_LIMA).date()
+        borradas = await r_db.eliminar_reprogramaciones_futuras(tarea, hoy)
+        if borradas:
+            log.info(f"[COACH] limpié {borradas} reprogramación(es) futura(s) de '{tarea}' (sí tardío)")
         instr = (
             f"Cristian acaba de confirmar que cumplió: '{tarea}'. "
             "Celebra genuinamente en máximo 4 líneas, con versículo."
@@ -195,11 +174,8 @@ async def _procesar_feedback(numero: str, feedback) -> None:
             )
 
     elif feedback is False:
-        if es_calendar:
-            add_evento_calendar_cumplido(calendar_key)  # cerramos la pregunta
-        else:
-            await r_db.marcar_cumplido(rec_id, False)
-            await r_db.marcar_reprogramado(rec_id)
+        await r_db.marcar_cumplido(rec_id, False)
+        await r_db.marcar_reprogramado(rec_id)
         instr = (
             f"Cristian acaba de decir que NO cumplió con: '{tarea}'. "
             "Responde con calidez genuina, sin juicio y sin sermón. "
@@ -214,11 +190,8 @@ async def _procesar_feedback(numero: str, feedback) -> None:
             respuesta = plantilla_no_cumplido(tarea)
 
     else:  # "medias"
-        if es_calendar:
-            add_evento_calendar_cumplido(calendar_key)
-        else:
-            await r_db.marcar_cumplido(rec_id, False)
-            await r_db.marcar_reprogramado(rec_id)
+        await r_db.marcar_cumplido(rec_id, False)
+        await r_db.marcar_reprogramado(rec_id)
         instr = (
             f"Cristian cumplió a medias con: '{tarea}'. "
             "Responde con calidez: "
@@ -253,22 +226,7 @@ async def _crear_y_confirmar(numero: str, intent: dict) -> None:
     hora_recordar    = (momento_tarea - timedelta(minutes=5)).time()
     hora_seguimiento = (momento_tarea + timedelta(minutes=30)).time()
 
-    # Detectar conflicto con Calendar ANTES de crear (no bloqueante, solo informativo)
-    conflicto = None
-    try:
-        from coach.integrations.calendar import listar_eventos, detectar_conflicto
-        eventos_fecha = listar_eventos(fecha_tarea)
-        conflicto = detectar_conflicto(eventos_fecha, fecha_tarea, hora_tarea)
-    except Exception as e:
-        log.warning(f"[CALENDAR] no pude verificar conflictos: {e}")
-
     await r_db.crear_recordatorio(tarea, hora_recordar, hora_seguimiento, fecha_tarea, meta_key=meta_key)
-
-    try:
-        from coach.integrations.calendar import crear_evento
-        crear_evento(tarea, fecha_tarea, hora_tarea)
-    except Exception as e:
-        log.warning(f"[CALENDAR] no se pudo crear el evento: {e}")
 
     # Formatear fecha para el mensaje de confirmación si no es hoy
     fecha_confirmacion_str = ""
@@ -284,12 +242,6 @@ async def _crear_y_confirmar(numero: str, intent: dict) -> None:
         hora_tarea.strftime("%H:%M"),
         fecha_confirmacion_str
     )
-    if conflicto:
-        respuesta += (
-            f"\n\n⚠️ Ojo: a esa hora tienes *{conflicto['summary']}* "
-            f"({conflicto['hora_inicio']}–{conflicto['hora_fin']}) en Calendar. "
-            f"Si lo mueves dime."
-        )
 
     await m_db.guardar("assistant", respuesta, tipo="confirmacion_recordatorio")
     await enviar_mensaje(numero, respuesta)
@@ -312,74 +264,13 @@ def _formatear_lista_eventos(eventos: list[dict]) -> str:
     )
 
 
-async def _responder_consulta_calendar(numero: str, alcance: str) -> None:
-    """
-    Responde una consulta de calendar con la lista EXACTA armada en código
-    (sin pasar por LLM) + un cierre breve del LLM (versículo + pregunta).
-    Garantiza fidelidad de la lista.
-    """
-    from coach.integrations.calendar import listar_eventos
-
-    hoy = datetime.now(TZ_LIMA).date()
-    manana = hoy + timedelta(days=1)
-
-    bloques: list[str] = []
-    resumen_para_cierre: list[str] = []
-
-    if alcance in ("hoy", "ambos"):
-        try:
-            eventos_hoy = listar_eventos(hoy)
-        except Exception as e:
-            log.warning(f"[CALENDAR] error listando eventos de hoy: {e}")
-            eventos_hoy = []
-        bloques.append(
-            f"📅 *Hoy {_fecha_humana_corta(hoy)}:*\n{_formatear_lista_eventos(eventos_hoy)}"
-        )
-        resumen_para_cierre.append(f"hoy tiene {len(eventos_hoy)} evento(s)")
-
-    if alcance in ("manana", "ambos"):
-        try:
-            eventos_manana = listar_eventos(manana)
-        except Exception as e:
-            log.warning(f"[CALENDAR] error listando eventos de mañana: {e}")
-            eventos_manana = []
-        bloques.append(
-            f"📅 *Mañana {_fecha_humana_corta(manana)}:*\n{_formatear_lista_eventos(eventos_manana)}"
-        )
-        resumen_para_cierre.append(f"mañana tiene {len(eventos_manana)} evento(s)")
-
-    lista = "\n\n".join(bloques)
-
-    # El LLM solo arma el cierre — NO toca la lista
-    instr = (
-        f"Cristian acaba de pedir su agenda de Calendar ({', '.join(resumen_para_cierre)}). "
-        "Ya le mostré la lista arriba. Genera SOLO un cierre breve (2 líneas máximo): "
-        "1) un versículo bíblico corto con referencia, "
-        "2) una pregunta concreta tipo '¿por cuál arrancas?' o '¿cómo te sientes con el día?'. "
-        "NO repitas la lista. NO menciones eventos específicos. Tono cálido."
-    )
-    try:
-        cierre = await generar_mensaje(instr)
-    except Exception as e:
-        log.error(f"[COACH] error generando cierre consulta calendar: {e}")
-        cierre = (
-            "'Todo lo puedo en Cristo que me fortalece' — Fil 4:13\n"
-            "¿Por cuál vas a arrancar?"
-        )
-
-    respuesta = f"{lista}\n\n{cierre}"
-    await m_db.guardar("assistant", respuesta, tipo="consulta_calendar")
-    await enviar_mensaje(numero, respuesta)
-
-
-# ── Gestión de metas por conversación (agregar / pausar / abandonar / ...) ──
-
 async def _manejar_gestion_meta(numero: str, gestion: dict) -> None:
     """Responde 'listar' al toque, o arma la confirmación para escribir una meta."""
     accion = gestion.get("accion")
     key = (gestion.get("key") or "").strip()
     descripcion = (gestion.get("descripcion") or "").strip()
     key_nueva = (gestion.get("key_nueva") or "").strip()
+    fecha_objetivo = (gestion.get("fecha_objetivo") or "").strip() or None
 
     if accion == "listar":
         metas = await obtener_metas()
@@ -408,15 +299,16 @@ async def _manejar_gestion_meta(numero: str, gestion: dict) -> None:
         return
 
     # Guardar la propuesta y pedir confirmación explícita antes de escribir.
-    set_pendiente_meta(accion, key, descripcion, key_nueva or None)
+    set_pendiente_meta(accion, key, descripcion, key_nueva or None, fecha_objetivo)
+    plazo_txt = f" (plazo {fecha_objetivo})" if fecha_objetivo else ""
     resumen = {
-        "agregar":   f"agrego la meta «{key}»" + (f": {descripcion}" if descripcion else ""),
+        "agregar":   f"agrego la meta «{key}»" + (f": {descripcion}" if descripcion else "") + plazo_txt,
         "pausar":    f"pauso la meta «{key}» (no la borro)",
         "activar":   f"reactivo la meta «{key}»",
         "lograr":    f"marco «{key}» como lograda 🎉",
         "abandonar": f"abandono la meta «{key}» (queda archivada, no se borra)",
         "renombrar": (f"renombro «{key}»" + (f" a «{key_nueva}»" if key_nueva else "")
-                      + (f" / {descripcion}" if descripcion else "")),
+                      + (f" / {descripcion}" if descripcion else "") + plazo_txt),
     }.get(accion, f"aplico «{accion}» sobre «{key}»")
     respuesta = f"¿Confirmo? {resumen}. Responde *sí* o *no*."
     await m_db.guardar("assistant", respuesta, tipo="meta_confirmacion")
@@ -439,10 +331,13 @@ async def _confirmar_gestion_meta(numero: str, aplicar: bool) -> None:
     key = pendiente.get("key")
     descripcion = pendiente.get("descripcion")
     key_nueva = pendiente.get("key_nueva")
+    fecha_objetivo = pendiente.get("fecha_objetivo")
     try:
         if accion == "agregar":
-            await metas_db.upsert(key, descripcion or key, estado="activa")
-            msg = f"✅ Meta «{key}» agregada. Ya la tomo en cuenta desde ahora."
+            await metas_db.upsert(key, descripcion or key, estado="activa",
+                                  fecha_objetivo=fecha_objetivo)
+            plazo = f" (plazo {fecha_objetivo})" if fecha_objetivo else ""
+            msg = f"✅ Meta «{key}» agregada{plazo}. Ya la tomo en cuenta desde ahora."
         elif accion == "pausar":
             await metas_db.cambiar_estado(key, "pausada")
             msg = f"✅ «{key}» en pausa."
@@ -458,7 +353,8 @@ async def _confirmar_gestion_meta(numero: str, aplicar: bool) -> None:
         elif accion == "renombrar":
             nueva = key_nueva or key
             desc = descripcion or key
-            await metas_db.upsert(nueva, desc, estado="activa")
+            await metas_db.upsert(nueva, desc, estado="activa",
+                                  fecha_objetivo=fecha_objetivo)
             if key_nueva and key_nueva != key:
                 await metas_db.cambiar_estado(key, "abandonada")
             msg = f"✅ Meta actualizada: «{nueva}»."

@@ -3,11 +3,10 @@ APScheduler con todos los jobs proactivos del coach.
 
 Jobs:
 - Cada minuto:        revisa avisos (5 min antes) y preguntas de seguimiento (30 min después) de recordatorios DB.
-- Cada 5 min:         revisa eventos de Calendar → aviso 10 min antes, seguimiento 15 min después.
-- 06:30 (Lima, todos los días):  arranque del día — tareas + eventos de Calendar + versículo.
+- 06:30 (Lima, todos los días):  arranque del día — tareas del día + versículo.
 - 12:00 (Lima):       check del mediodía sobre la tarea de la mañana.
 - 12:30 (Lima):       si Cristian no respondió → recordatorio.
-- 21:00 (Lima):       cierre del día — balance + reprogramar SOLO no-cumplidas + vista de mañana (Calendar).
+- 21:00 (Lima):       cierre del día — balance + reprogramar SOLO no-cumplidas + foco de mañana.
 - 19:00 mié (Lima):   check-in emocional — cómo se siente, qué le pesa, hilo con conversaciones recientes.
 - 22:00 sáb (Lima):   resumen semanal silencioso — comprime 7 días de chat en bullets persistidos.
 - 20:00 dom (Lima):   revisión semanal — 2 metas MENOS atendidas (chat + ejecución) en las últimas 2 semanas.
@@ -36,14 +35,6 @@ from coach.agent.state import (
     get_seguimientos_preguntados,
     add_seguimiento_preguntado,
     clear_seguimientos_preguntados,
-    get_eventos_avisados,
-    add_evento_avisado,
-    clear_eventos_avisados,
-    get_eventos_seguimiento,
-    add_evento_seguimiento,
-    clear_eventos_seguimiento,
-    get_eventos_calendar_cumplidos,
-    clear_eventos_calendar_cumplidos,
     set_pendiente_feedback,
     get_check_mediodia_respondido,
     set_check_mediodia_respondido,
@@ -52,7 +43,6 @@ from coach.agent.state import (
 from coach.db import mensajes as m_db
 from coach.db import recordatorios as r_db
 from coach.db import resumenes as res_db
-from coach.integrations.calendar import listar_eventos
 from whatsapp import enviar_mensaje
 
 load_dotenv()
@@ -75,7 +65,6 @@ def iniciar_scheduler() -> AsyncIOScheduler | None:
 
     sched = AsyncIOScheduler(timezone=TZ_LIMA)
     sched.add_job(_tick_recordatorios,      CronTrigger(second=0))
-    sched.add_job(_tick_eventos_calendar,   CronTrigger(minute="*/5", second=30))
     sched.add_job(_arranque_dia,            CronTrigger(hour=6,  minute=30))
     sched.add_job(_check_mediodia,          CronTrigger(hour=12, minute=0))
     sched.add_job(_recordatorio_12_30,      CronTrigger(hour=12, minute=30))
@@ -144,78 +133,6 @@ async def _tick_recordatorios() -> None:
         log.error(f"[COACH] _tick_recordatorios: {e}")
 
 
-async def _tick_eventos_calendar() -> None:
-    """Cada 5 min: avisa 10 min antes de un evento Calendar, pregunta 15 min después.
-    Ignora eventos que ya están como recordatorios en la DB (para no duplicar)."""
-    try:
-        ahora = datetime.now(TZ_LIMA)
-        hoy = ahora.date()
-        eventos = listar_eventos(hoy)
-
-        # Nombres de tareas en la DB hoy → para no duplicar con el tick de recordatorios
-        tareas_db = await r_db.tareas_del_dia(hoy)
-        nombres_db = {t["tarea"].lower().strip() for t in tareas_db}
-
-        cumplidos = get_eventos_calendar_cumplidos()
-        for ev in eventos:
-            # Si el evento fue creado por el bot (existe como recordatorio), skip
-            if ev["summary"].lower().strip() in nombres_db:
-                continue
-            key = f"{ev['hora_inicio']}|{ev['summary']}"
-            if key in cumplidos:
-                continue  # ya respondió sí/no/medias, no re-preguntar
-            inicio = ev["inicio_dt"]
-            fin = ev["fin_dt"]
-            minutos_para_inicio = (inicio - ahora).total_seconds() / 60
-            minutos_desde_fin = (ahora - fin).total_seconds() / 60
-
-            # Aviso previo: entre 10 y 0 minutos antes del inicio
-            if 0 <= minutos_para_inicio <= 10 and key not in get_eventos_avisados():
-                add_evento_avisado(key)
-                try:
-                    instr = (
-                        f"Cristian tiene '{ev['summary']}' a las {ev['hora_inicio']}. "
-                        f"Faltan ~{int(minutos_para_inicio)} minutos. "
-                        "Avísale que se prepare. Máximo 3 líneas, tono directo y motivador."
-                    )
-                    texto = await generar_mensaje(instr)
-                except Exception:
-                    texto = (
-                        f"⏰ En unos minutos: *{ev['summary']}* ({ev['hora_inicio']})\n"
-                        f"Prepárate, Cristian."
-                    )
-                await _enviar(texto, tipo="aviso_evento_calendar")
-                log.info(f"[CALENDAR] aviso previo enviado: {ev['summary']}")
-
-            # Seguimiento: entre 15 y 30 minutos después de que terminó
-            if 15 <= minutos_desde_fin <= 30 and key not in get_eventos_seguimiento():
-                add_evento_seguimiento(key)
-                try:
-                    instr = (
-                        f"'{ev['summary']}' estaba programado de {ev['hora_inicio']} a {ev['hora_fin']}. "
-                        "Ya pasó. Pregúntale a Cristian si lo cumplió. "
-                        "Máximo 3 líneas, directo."
-                    )
-                    texto = await generar_mensaje(instr)
-                except Exception:
-                    texto = (
-                        f"¿Cumpliste con *{ev['summary']}* "
-                        f"(de las {ev['hora_inicio']})?\n"
-                        f"Responde: sí / no / a medias"
-                    )
-                await _enviar(texto, tipo="seguimiento_evento_calendar")
-                set_pendiente_feedback(
-                    tipo="calendar",
-                    ref=key,
-                    ts_iso=ahora.isoformat(),
-                    tarea=ev["summary"],
-                )
-                log.info(f"[CALENDAR] seguimiento enviado: {ev['summary']}")
-
-    except Exception as e:
-        log.error(f"[COACH] _tick_eventos_calendar: {e}")
-
-
 _DIAS_ES = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
 _MESES_ES = ["enero", "febrero", "marzo", "abril", "mayo", "junio",
              "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
@@ -236,24 +153,20 @@ async def _arranque_dia() -> None:
     try:
         hoy = datetime.now(TZ_LIMA).date()
         tareas = await r_db.tareas_del_dia(hoy)
-        eventos = listar_eventos(hoy)
 
         listado_tareas = (
             "\n".join(f"- {t['hora_recordar'][:5]} {t['tarea']}" for t in tareas)
             if tareas
             else "(no hay tareas programadas todavía)"
         )
-        listado_eventos = _formatear_eventos(eventos, fecha=hoy)
 
         instr = (
             f"Es 6:30 AM del {_fecha_humana(hoy)}. Genera el mensaje de arranque del día para Cristian. "
-            "IMPORTANTE: solo menciones tareas/eventos que aparecen en las listas abajo, "
-            "NO inventes fechas ni horas — las listas son la única fuente de verdad.\n\n"
+            "IMPORTANTE: solo menciones tareas que aparecen en la lista abajo, "
+            "NO inventes fechas ni horas — la lista es la única fuente de verdad.\n\n"
             "Tareas programadas hoy (recordatorios del coach):\n"
             f"{listado_tareas}\n\n"
-            "Eventos en tu Google Calendar hoy (meetings, citas, compromisos):\n"
-            f"{listado_eventos}\n\n"
-            "Estructura: saludo breve + las dos listas (separadas, con la hora EXACTA como aparece) "
+            "Estructura: saludo breve + la lista de tareas (con la hora EXACTA como aparece) "
             "+ versículo motivador + una pregunta de acción concreta. Máximo 8 líneas."
         )
         try:
@@ -263,15 +176,11 @@ async def _arranque_dia() -> None:
             texto = (
                 "☀️ Buen día, Cristian.\n"
                 f"Tareas:\n{listado_tareas}\n"
-                f"Calendar:\n{listado_eventos}\n"
                 "'El alma diligente será prosperada' — Prov 13:4\n"
                 "¿Cuál atacas primero?"
             )
         await _enviar(texto, tipo="arranque_dia")
         clear_seguimientos_preguntados()
-        clear_eventos_avisados()
-        clear_eventos_seguimiento()
-        clear_eventos_calendar_cumplidos()
         remove_check_mediodia_respondido(hoy.isoformat())
     except Exception as e:
         log.error(f"[COACH] _arranque_dia: {e}")
@@ -342,9 +251,6 @@ async def _cierre_dia() -> None:
             except Exception as e:
                 log.error(f"[COACH] error reprogramando {t.get('tarea')}: {e}")
 
-        eventos_manana = listar_eventos(manana)
-        eventos_manana_str = _formatear_eventos(eventos_manana, fecha=manana)
-
         cumplidas_str = (
             "\n".join(f"✅ {t['tarea']}" for t in cumplidas) if cumplidas else "(ninguna)"
         )
@@ -363,13 +269,12 @@ async def _cierre_dia() -> None:
         instr = (
             f"Es 9 PM del {_fecha_humana(hoy)}, cierre del día para Cristian. "
             f"Mañana es {_fecha_humana(manana)}. "
-            "IMPORTANTE: usa SOLO las tareas y eventos de las listas abajo, "
+            "IMPORTANTE: usa SOLO las tareas de las listas abajo, "
             "NO inventes fechas ni horas.\n\n"
             f"Cumplidas hoy:\n{cumplidas_str}\n"
             f"Reprogramadas para mañana (las que dijo que no cumplió):\n{reprog_str}\n"
             f"{bloque_sin_respuesta}\n"
-            f"Eventos en Calendar para mañana:\n{eventos_manana_str}\n\n"
-            "Estructura: balance honesto de hoy + vista de mañana (tareas + Calendar) "
+            "Estructura: balance honesto de hoy + foco para mañana "
             "+ si hay 'sin respuesta', pídele que te diga rápido si las cumplió o no "
             "+ versículo de cierre + un foco concreto para mañana. Máximo 9 líneas."
         )
@@ -385,7 +290,6 @@ async def _cierre_dia() -> None:
                 f"Cumplidas:\n{cumplidas_str}\n"
                 f"Reprogramadas:\n{reprog_str}\n"
                 f"{sin_resp_fb}"
-                f"Calendar mañana:\n{eventos_manana_str}\n"
                 "'Todo lo puedo en Cristo que me fortalece' — Fil 4:13"
             )
         await _enviar(texto, tipo="cierre_dia")

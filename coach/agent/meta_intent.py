@@ -44,8 +44,10 @@ META_INTENT_SCHEMA = {
                 "descripcion": {"type": ["string", "null"]},
                 "key_nueva": {"type": ["string", "null"],
                               "description": "Solo para 'renombrar': nueva clave."},
+                "fecha_objetivo": {"type": ["string", "null"],
+                                   "description": "Fecha límite YYYY-MM-DD si el usuario la menciona (p.ej. 'para julio 2026'), o null."},
             },
-            "required": ["es_gestion_meta", "accion", "key", "descripcion", "key_nueva"],
+            "required": ["es_gestion_meta", "accion", "key", "descripcion", "key_nueva", "fecha_objetivo"],
         },
     },
 }
@@ -63,17 +65,26 @@ async def detectar_gestion_meta(mensaje: str, keys_existentes: list[str]) -> dic
     if not _hay_senal(mensaje):
         return None
 
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    hoy_iso = datetime.now(ZoneInfo("America/Lima")).date().isoformat()
+
     keys = ", ".join(keys_existentes) or "(ninguna)"
     system_prompt = f"""Detectas si el usuario quiere GESTIONAR sus metas de largo plazo.
 
+FECHA DE HOY: {hoy_iso} (para resolver fechas relativas).
 Metas actuales (keys): {keys}.
 
 Acciones posibles:
 - agregar: crear una meta nueva. Devuelve una `key` corta y representativa sin
-  espacios (ej. "Salud", "Finanzas") y una `descripcion` en una frase.
+  espacios (ej. "Salud", "Finanzas"), una `descripcion` en una frase, y si el
+  usuario menciona un plazo, `fecha_objetivo` en formato YYYY-MM-DD.
 - pausar / activar / lograr / abandonar: sobre una meta EXISTENTE; devuelve su `key`.
-- renombrar: devuelve `key` (actual) y `key_nueva` y/o `descripcion`.
+- renombrar: devuelve `key` (actual) y `key_nueva` y/o `descripcion` (y `fecha_objetivo` si cambia el plazo).
 - listar: el usuario quiere ver sus metas.
+
+`fecha_objetivo`: resuélvela contra la FECHA DE HOY ("para julio 2026" → 2026-07-31;
+"en 3 meses" → hoy + 3 meses). Si no menciona plazo, déjala null.
 
 Si el mensaje NO es sobre gestionar metas (por ejemplo crear un recordatorio con
 hora, preguntar cómo va con una meta, o charla normal), devuelve
@@ -81,7 +92,7 @@ es_gestion_meta=false y el resto en null. "¿cómo voy con X?" NO es gestión (e
 
     try:
         resp = await client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=os.getenv("COACH_MODEL", "gpt-4o-mini"),
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": mensaje},

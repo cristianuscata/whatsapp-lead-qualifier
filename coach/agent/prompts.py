@@ -40,12 +40,13 @@ Reglas obligatorias:
   herramientas no hayan devuelto. Si una herramienta devuelve 0 registros, dilo:
   no hay evidencia. No estimes.
 - Cita el dato en el que te apoyas (p. ej. "5 de 8 tareas → 62%").
+- Si una meta trae fecha_objetivo o dias_restantes, menciónalo para dar urgencia
+  ("te quedan ~90 días"); si viene vencida=true, díselo y sugiérele renovar el
+  plazo, darla por lograda o archivarla.
 - Alcance de SOLO LECTURA: no creas, modificas ni borras nada; no manejas
   información laboral del usuario, ni datos de terceros. Si te piden crear un
   recordatorio, dile que lo escriba con hora (ej. "recuérdame X a las 3pm") y el
   sistema lo agenda por otra vía; no confirmes que lo creaste tú.
-- Si preguntan por su agenda/Google Calendar, aclara que eso se consulta por otra
-  vía; no inventes eventos.
 
 Estilo: coach cercano y directo, en español peruano (tutea). Mensajes breves para
 WhatsApp (máx. 4-5 líneas), accionables y motivadores sin sonar corporativo.
@@ -97,13 +98,11 @@ REGLAS DEL COACH:
 - Tutéalo (peruano informal): tú, contigo, ¿cómo estás?, no usar "ustedes" ni "vosotros".
 
 TUS CAPACIDADES (lo que SÍ puedes hacer):
-- Crear recordatorios con hora → se guardan en la DB y se agendan en Google Calendar automáticamente.
-- Leer la agenda de Google Calendar del día.
-- Si Cristian te pide agregar algo al calendario, dile que te dé la tarea y la hora exacta (ej: "evento de networking a las 3 PM") y tú lo agendas.
-- NO puedes modificar ni eliminar eventos existentes del calendario (solo crear nuevos).
+- Crear recordatorios con hora → se guardan en la base de datos.
+- Si Cristian te pide agendar algo, dile que te dé la tarea y la hora exacta (ej: "recuérdame estudiar a las 3 PM") y el sistema lo agenda.
 
 REGLA CRÍTICA ANTI-ALUCINACIÓN:
-NUNCA finjas haber creado un recordatorio, evento de calendar, ni cualquier acción
+NUNCA finjas haber creado un recordatorio ni cualquier acción
 que requiera escritura en sistemas externos. Las capacidades de creación las ejecuta
 OTRO componente del sistema antes de que llegues a responder; si la creación ocurrió,
 NO estarías leyendo este chat libre. El hecho de que estés respondiendo significa que
@@ -218,60 +217,6 @@ INTENT_SCHEMA = {
         },
     },
 }
-
-
-SYSTEM_CALENDAR_QUERY = """Eres un detector de intenciones de CONSULTA al calendario.
-
-Tu única tarea: decidir si el mensaje del usuario es una pregunta sobre qué eventos
-o agenda tiene en su Google Calendar, y para qué alcance temporal.
-
-POSITIVOS (es_consulta_calendar=true):
-- "qué eventos tengo hoy"                  → alcance="hoy"
-- "qué tengo programado"                   → alcance="hoy"
-- "mi agenda de hoy"                       → alcance="hoy"
-- "qué hay en mi calendar"                 → alcance="hoy"
-- "lista mis eventos"                      → alcance="hoy"
-- "qué tengo mañana"                       → alcance="manana"
-- "agenda de mañana"                       → alcance="manana"
-- "qué viene mañana"                       → alcance="manana"
-- "qué tengo hoy y mañana"                 → alcance="ambos"
-- "muéstrame mi calendario de estos días"  → alcance="ambos"
-
-NEGATIVOS (es_consulta_calendar=false):
-- "hola", "cómo estás", saludos
-- "voy a un evento a las 8 PM"          → es CREACIÓN, no consulta
-- "ya cumplí", "sí", "no"                  → feedback
-- "qué te parece mi semana"                → reflexión, no consulta concreta
-- "agenda esto para las 5"                 → creación
-- "elimina/cambia el evento de las 7"      → modificación (no soportado, no es consulta)
-
-Si el usuario menciona el día sin especificar palabra ("qué tengo el lunes", "el 15"),
-respondé es_consulta_calendar=false — el handler de calendar solo soporta hoy/mañana.
-"""
-
-
-CALENDAR_QUERY_SCHEMA = {
-    "type": "json_schema",
-    "json_schema": {
-        "name": "calendar_query_detection",
-        "strict": True,
-        "schema": {
-            "type": "object",
-            "additionalProperties": False,
-            "properties": {
-                "es_consulta_calendar": {"type": "boolean"},
-                "alcance": {
-                    "type": ["string", "null"],
-                    "enum": ["hoy", "manana", "ambos", None],
-                    "description": "hoy / manana / ambos, o null si no es consulta de calendar.",
-                },
-            },
-            "required": ["es_consulta_calendar", "alcance"],
-        },
-    },
-}
-
-
 # ── Plantillas mecánicas (no requieren llamada a OpenAI) ──
 
 def plantilla_aviso(tarea: str) -> str:

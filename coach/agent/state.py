@@ -168,13 +168,14 @@ def clear_eventos_calendar_cumplidos() -> None:
 # El coach guarda aquí la acción propuesta y espera un "sí/no" antes de escribir.
 
 def set_pendiente_meta(accion: str, key: str | None, descripcion: str | None,
-                       key_nueva: str | None = None) -> None:
+                       key_nueva: str | None = None, fecha_objetivo: str | None = None) -> None:
     state = load_state()
     state["pendiente_meta"] = {
         "accion": accion,
         "key": key,
         "descripcion": descripcion,
         "key_nueva": key_nueva,
+        "fecha_objetivo": fecha_objetivo,
     }
     save_state(state)
 

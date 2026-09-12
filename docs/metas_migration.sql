@@ -20,3 +20,9 @@ insert into metas (key, descripcion, prioridad) values
   ('Maestría',     'Maestría UNAC: sustentar en diciembre 2026.',                                2),
   ('MVP',          'Agente WhatsApp MVP: en producción.',                                        1)
 on conflict (key) do nothing;
+
+-- Plazos (fecha_objetivo) para las metas con fecha conocida. Las demás quedan
+-- sin plazo hasta que lo definas por WhatsApp ("agrega/renombra ... para julio 2026").
+-- Si ya corriste la primera versión de esta migración, ejecuta SOLO estos UPDATE:
+update metas set fecha_objetivo = '2026-07-31' where key = 'Azure'    and fecha_objetivo is null;
+update metas set fecha_objetivo = '2026-12-15' where key = 'Maestría' and fecha_objetivo is null;

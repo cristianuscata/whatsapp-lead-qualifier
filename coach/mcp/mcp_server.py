@@ -52,13 +52,24 @@ async def consultar_metas(meta: str = "") -> dict:
         b = conteo.get(m["key"], {"total": 0, "cumplidas": 0})
         total, cumplidas = b["total"], b["cumplidas"]
         avance = round(100 * cumplidas / total) if total else 0
-        filas.append({
+        fila = {
             "meta": m["key"],
             "descripcion": m["descripcion"],
             "tareas_totales": total,
             "tareas_cumplidas": cumplidas,
             "avance_pct": avance,
-        })
+        }
+        # Plazo: días restantes / vencida, si la meta tiene fecha objetivo.
+        fobj = m.get("fecha_objetivo")
+        if fobj:
+            try:
+                dias = (date.fromisoformat(str(fobj)) - hoy).days
+                fila["fecha_objetivo"] = str(fobj)
+                fila["dias_restantes"] = dias
+                fila["vencida"] = dias < 0
+            except ValueError:
+                pass
+        filas.append(fila)
 
     if filtro and not filas:
         return {
