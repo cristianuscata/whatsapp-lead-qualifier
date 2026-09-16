@@ -14,16 +14,18 @@ from langchain.agents import create_agent
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 from coach.agent.prompts import build_system_coach_ar
+from coach.agent.model_config import chat_openai_kwargs
 from coach.db.metas import obtener_metas, metas_text
 
 MCP_URL = os.getenv("MCP_URL", "http://mcp:8002/")
 
 # El SDK de OpenAI exige api_key no vacío para construir el cliente. Si falta,
 # usamos un placeholder para que el proceso levante; falla recién al invocar.
+# chat_openai_kwargs() ajusta model/temperature/reasoning_effort según COACH_MODEL
+# (mini vs. modelos de razonamiento como gpt-5.6-luna).
 llm = ChatOpenAI(
-    model=os.getenv("COACH_MODEL", "gpt-4o-mini"),
     api_key=os.getenv("OPENAI_API_KEY") or "sk-configura-tu-clave",
-    temperature=0.3,
+    **chat_openai_kwargs(temperature=0.3),
 )
 
 _client: MultiServerMCPClient | None = None

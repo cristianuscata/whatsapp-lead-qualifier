@@ -6,6 +6,7 @@ from openai import AsyncOpenAI
 from dotenv import load_dotenv
 
 from coach.agent.prompts import get_system_coach
+from coach.agent.model_config import chat_kwargs
 from coach.db.metas import obtener_metas, metas_text
 
 load_dotenv()
@@ -47,9 +48,8 @@ async def responder_chat(mensaje: str, historial: list[dict]) -> str:
     messages.append({"role": "user", "content": mensaje})
 
     resp = await client.chat.completions.create(
-        model=os.getenv("COACH_MODEL", "gpt-4o-mini"),
         messages=messages,
-        temperature=0.3,
+        **chat_kwargs(temperature=0.3),
     )
     return resp.choices[0].message.content.strip()
 
@@ -61,11 +61,10 @@ async def generar_mensaje(instruccion: str) -> str:
     """
     metas = await obtener_metas()
     resp = await client.chat.completions.create(
-        model=os.getenv("COACH_MODEL", "gpt-4o-mini"),
         messages=[
             {"role": "system", "content": get_system_coach(metas_text(metas))},
             {"role": "user",   "content": instruccion},
         ],
-        temperature=0.7,
+        **chat_kwargs(temperature=0.7),
     )
     return resp.choices[0].message.content.strip()

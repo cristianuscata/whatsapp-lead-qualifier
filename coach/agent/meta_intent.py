@@ -11,6 +11,8 @@ import logging
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 
+from coach.agent.model_config import chat_kwargs
+
 load_dotenv()
 log = logging.getLogger(__name__)
 client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -92,13 +94,12 @@ es_gestion_meta=false y el resto en null. "¿cómo voy con X?" NO es gestión (e
 
     try:
         resp = await client.chat.completions.create(
-            model=os.getenv("COACH_MODEL", "gpt-4o-mini"),
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": mensaje},
             ],
             response_format=META_INTENT_SCHEMA,
-            temperature=0,
+            **chat_kwargs(temperature=0),
         )
         data = json.loads(resp.choices[0].message.content)
     except Exception as e:

@@ -13,6 +13,7 @@ from coach.agent.prompts import (
     get_system_intent,
     INTENT_SCHEMA,
 )
+from coach.agent.model_config import chat_kwargs
 from coach.db.metas import obtener_metas
 
 load_dotenv()
@@ -37,13 +38,12 @@ async def detectar_recordatorio(mensaje: str) -> dict | None:
         system_prompt = get_system_intent(fecha_ref_str, metas)
 
         resp = await client.chat.completions.create(
-            model=os.getenv("COACH_MODEL", "gpt-4o-mini"),
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user",   "content": mensaje},
             ],
             response_format=INTENT_SCHEMA,
-            temperature=0,
+            **chat_kwargs(temperature=0),
         )
         data = json.loads(resp.choices[0].message.content)
     except Exception as e:
