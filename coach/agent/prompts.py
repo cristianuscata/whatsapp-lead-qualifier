@@ -222,7 +222,7 @@ INTENT_SCHEMA = {
 def plantilla_aviso(tarea: str) -> str:
     return (
         f"⏰ En 5 minutos: {tarea}\n"
-        f"Todo listo, Cristian. Australia no espera. 🇦🇺"
+        f"Todo listo, Cristian. A ejecutar. ⚔️"
     )
 
 
